@@ -32,9 +32,45 @@ export const creature = sqliteTable("creature", {
   // ISO timestamp the current sleep ends; null while idle.
   activityUntil: text("activity_until"),
   lastAction: text("last_action"),
+  // Who did that last action — see `sessions` below. Null only before the
+  // first action anyone's ever taken.
+  lastActorSessionId: text("last_actor_session_id").references(() => sessions.id),
   updatedAt: text("updated_at")
     .notNull()
     .default(sql`(datetime('now'))`),
 });
 
+// A lightweight, unauthenticated visitor identity: a random token set as an
+// httpOnly cookie on first visit (src/lib/session.ts). Good enough to tell
+// "who did that" apart in the care history — never a login, never persisted
+// across browsers. See PROCESS.md, Decision 7.
+export const sessions = sqliteTable("sessions", {
+  id: text().primaryKey(),
+  label: text().notNull(),
+  createdAt: text("created_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
+  lastSeenAt: text("last_seen_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
+});
+
+// Append-only care history: every action actually applied, who did it, and
+// what changed. Pruned to the most recent rows (src/lib/db.ts) — "a small
+// persistent care history" is a deliberate bound, stated once here, not an
+// accidental drop of old data discovered later. See PROCESS.md, Decision 8.
+export const careEvents = sqliteTable("care_events", {
+  id: int().primaryKey({ autoIncrement: true }),
+  sessionId: text("session_id")
+    .notNull()
+    .references(() => sessions.id),
+  action: text().notNull(),
+  summary: text().notNull(),
+  createdAt: text("created_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
+});
+
 export type Creature = typeof creature.$inferSelect;
+export type Session = typeof sessions.$inferSelect;
+export type CareEvent = typeof careEvents.$inferSelect;

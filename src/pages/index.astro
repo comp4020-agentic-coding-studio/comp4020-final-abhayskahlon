@@ -1,7 +1,12 @@
 ---
 import { ACTIONS } from "../lib/creature";
 import { getCreatureState } from "../lib/db";
+import { getOrCreateSession } from "../lib/session";
 import "../styles.css";
+
+// Ensures every visitor has a stable cookie identity by the time they first
+// look, not only once they first act (see src/lib/session.ts).
+getOrCreateSession(Astro.cookies);
 
 const state = getCreatureState();
 
@@ -18,6 +23,14 @@ const ACTION_LABELS: Record<string, string> = {
   walk: "Walk",
   clean: "Clean",
   sleep: "Sleep",
+};
+
+const ACTION_PAST_TENSE: Record<string, string> = {
+  feed: "fed",
+  play: "played with",
+  walk: "walked",
+  clean: "cleaned",
+  sleep: "put to sleep",
 };
 ---
 
@@ -75,9 +88,34 @@ const ACTION_LABELS: Record<string, string> = {
           state.lastAction && (
             <p class="last-action">
               Last action: <strong>{ACTION_LABELS[state.lastAction] ?? state.lastAction}</strong>
+              {state.lastActorLabel && (
+                <>
+                  {" "}
+                  by <strong>{state.lastActorLabel}</strong>
+                </>
+              )}
             </p>
           )
         }
+      </section>
+
+      <section class="panel" aria-labelledby="history-heading">
+        <h2 id="history-heading">Recent care</h2>
+        <p class="panel-note">
+          Everyone who's cared for this creature recently — not a leaderboard, just what happened and who was
+          there.
+        </p>
+        {state.history.length === 0 && <p class="panel-note">Nothing yet — be the first.</p>}
+        <ul class="history-list">
+          {
+            state.history.map((entry) => (
+              <li>
+                <strong>{entry.actorLabel}</strong> {ACTION_PAST_TENSE[entry.action] ?? entry.action} the creature (
+                {entry.summary}) — {entry.createdAt}
+              </li>
+            ))
+          }
+        </ul>
       </section>
 
       <section class="panel" aria-labelledby="actions-heading">

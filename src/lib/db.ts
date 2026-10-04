@@ -102,11 +102,12 @@ export type ActionRejection = { reason: string };
 export function performAction(action: ActionName): CreatureState | ActionRejection {
   return db.transaction((tx) => {
     const row = readRow(tx);
+    const now = new Date();
     const resolved = resolveActivity(
       { stats: row, activity: row.activity as Activity, activityUntil: row.activityUntil },
-      new Date(),
+      now,
     );
-    const outcome = applyAction(action, resolved);
+    const outcome = applyAction(action, resolved, now);
     if (!outcome.ok) return { reason: outcome.reason };
 
     tx.update(creature)

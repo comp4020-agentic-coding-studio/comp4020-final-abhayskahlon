@@ -1,5 +1,24 @@
 ---
+import { ACTIONS } from "../lib/creature";
+import { getCreatureState } from "../lib/db";
 import "../styles.css";
+
+const state = getCreatureState();
+
+const STAT_LABELS: Record<"hunger" | "energy" | "happiness" | "cleanliness", string> = {
+  hunger: "Fullness",
+  energy: "Energy",
+  happiness: "Happiness",
+  cleanliness: "Cleanliness",
+};
+
+const ACTION_LABELS: Record<string, string> = {
+  feed: "Feed",
+  play: "Play",
+  walk: "Walk",
+  clean: "Clean",
+  sleep: "Sleep",
+};
 ---
 
 <!doctype html>
@@ -21,10 +40,55 @@ import "../styles.css";
     <main>
       <h1>COMMONS</h1>
       <p>
-        This placeholder proves the Astro + Fly deploy path works end to end.
-        The shared creature lands in the next commit.
+        One shared creature, cared for by everyone here right now — not your
+        own pet, everyone's.
       </p>
-      <p><a href="/readme/">About this app</a></p>
+
+      <section class="panel" aria-labelledby="creature-heading">
+        <h2 id="creature-heading">The creature</h2>
+        <span class={`activity-badge ${state.activity}`}>
+          {state.activity === "sleeping" ? "sleeping" : "awake"}
+        </span>
+
+        {
+          (Object.keys(STAT_LABELS) as (keyof typeof STAT_LABELS)[]).map((key) => (
+            <div class="stat-row">
+              <span>{STAT_LABELS[key]}</span>
+              <span class="stat-bar">
+                <span class="stat-bar-fill" style={`width: ${state.stats[key]}%`} />
+              </span>
+              <span class="stat-value">{state.stats[key]}</span>
+            </div>
+          ))
+        }
+
+        <p class="condition">
+          Overall condition: <strong>{state.health}</strong>/100 — a simple read of the four needs above, not its
+          own mechanic.
+        </p>
+
+        {
+          state.lastAction && (
+            <p class="last-action">
+              Last action: <strong>{ACTION_LABELS[state.lastAction] ?? state.lastAction}</strong>
+            </p>
+          )
+        }
+      </section>
+
+      <section class="panel" aria-labelledby="actions-heading">
+        <h2 id="actions-heading">Care for it</h2>
+        <div class="actions">
+          {
+            ACTIONS.map((action) => (
+              <form method="post" action="/api/actions">
+                <input type="hidden" name="action" value={action} />
+                <button>{ACTION_LABELS[action] ?? action}</button>
+              </form>
+            ))
+          }
+        </div>
+      </section>
     </main>
   </body>
 </html>

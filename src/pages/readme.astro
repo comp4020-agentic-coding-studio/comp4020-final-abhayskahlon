@@ -1,0 +1,33 @@
+---
+// README.md, rendered: what this app is and what good looks like here,
+// published with the app. spec/invariants.test.ts checks its headings are
+// all here, in order.
+import * as readme from "../../README.md";
+import "../styles.css";
+
+const title = readme.getHeadings().find((h) => h.depth === 1)?.text ?? "README";
+
+// README images are committed to public/ and linked relatively (public/x.png)
+// so they render on GitHub; here they're served from the site root.
+const html = (await readme.compiledContent()).replace(/(src|href)="public\//g, '$1="/');
+---
+
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <header class="site-header">
+      <div>
+        <a href="/">COMMONS</a>
+        <nav aria-label="site">
+          <a href="/readme/">About</a>
+        </nav>
+      </div>
+    </header>
+    <main set:html={html} />
+  </body>
+</html>

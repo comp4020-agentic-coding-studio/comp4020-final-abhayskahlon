@@ -56,67 +56,70 @@ const ACTION_PAST_TENSE: Record<string, string> = {
         One shared creature, cared for by everyone here right now — not your
         own pet, everyone's.
       </p>
+      <p class="live-indicator" id="live-indicator">connecting…</p>
 
-      <section class="panel" aria-labelledby="creature-heading">
-        <h2 id="creature-heading">The creature</h2>
-        <span
-          class={`activity-badge ${state.activity}`}
-          id="activity-badge"
-          data-activity-until={state.activityUntil ?? ""}
-        >
-          {state.activity === "sleeping" ? "sleeping" : "awake"}
-        </span>
+      <div id="live-state">
+        <section class="panel" aria-labelledby="creature-heading">
+          <h2 id="creature-heading">The creature</h2>
+          <span
+            class={`activity-badge ${state.activity}`}
+            id="activity-badge"
+            data-activity-until={state.activityUntil ?? ""}
+          >
+            {state.activity === "sleeping" ? "sleeping" : "awake"}
+          </span>
 
-        {
-          (Object.keys(STAT_LABELS) as (keyof typeof STAT_LABELS)[]).map((key) => (
-            <div class="stat-row">
-              <span>{STAT_LABELS[key]}</span>
-              <span class="stat-bar">
-                <span class="stat-bar-fill" style={`width: ${state.stats[key]}%`} />
-              </span>
-              <span class="stat-value">{state.stats[key]}</span>
-            </div>
-          ))
-        }
-
-        <p class="condition">
-          Overall condition: <strong>{state.health}</strong>/100 — a simple read of the four needs above, not its
-          own mechanic.
-        </p>
-
-        {
-          state.lastAction && (
-            <p class="last-action">
-              Last action: <strong>{ACTION_LABELS[state.lastAction] ?? state.lastAction}</strong>
-              {state.lastActorLabel && (
-                <>
-                  {" "}
-                  by <strong>{state.lastActorLabel}</strong>
-                </>
-              )}
-            </p>
-          )
-        }
-      </section>
-
-      <section class="panel" aria-labelledby="history-heading">
-        <h2 id="history-heading">Recent care</h2>
-        <p class="panel-note">
-          Everyone who's cared for this creature recently — not a leaderboard, just what happened and who was
-          there.
-        </p>
-        {state.history.length === 0 && <p class="panel-note">Nothing yet — be the first.</p>}
-        <ul class="history-list">
           {
-            state.history.map((entry) => (
-              <li>
-                <strong>{entry.actorLabel}</strong> {ACTION_PAST_TENSE[entry.action] ?? entry.action} the creature (
-                {entry.summary}) — {entry.createdAt}
-              </li>
+            (Object.keys(STAT_LABELS) as (keyof typeof STAT_LABELS)[]).map((key) => (
+              <div class="stat-row">
+                <span>{STAT_LABELS[key]}</span>
+                <span class="stat-bar">
+                  <span class="stat-bar-fill" style={`width: ${state.stats[key]}%`} />
+                </span>
+                <span class="stat-value">{state.stats[key]}</span>
+              </div>
             ))
           }
-        </ul>
-      </section>
+
+          <p class="condition">
+            Overall condition: <strong>{state.health}</strong>/100 — a simple read of the four needs above, not its
+            own mechanic.
+          </p>
+
+          {
+            state.lastAction && (
+              <p class="last-action">
+                Last action: <strong>{ACTION_LABELS[state.lastAction] ?? state.lastAction}</strong>
+                {state.lastActorLabel && (
+                  <>
+                    {" "}
+                    by <strong>{state.lastActorLabel}</strong>
+                  </>
+                )}
+              </p>
+            )
+          }
+        </section>
+
+        <section class="panel" aria-labelledby="history-heading">
+          <h2 id="history-heading">Recent care</h2>
+          <p class="panel-note">
+            Everyone who's cared for this creature recently — not a leaderboard, just what happened and who was
+            there.
+          </p>
+          {state.history.length === 0 && <p class="panel-note">Nothing yet — be the first.</p>}
+          <ul class="history-list">
+            {
+              state.history.map((entry) => (
+                <li>
+                  <strong>{entry.actorLabel}</strong> {ACTION_PAST_TENSE[entry.action] ?? entry.action} the creature (
+                  {entry.summary}) — {entry.createdAt}
+                </li>
+              ))
+            }
+          </ul>
+        </section>
+      </div>
 
       <section class="panel" aria-labelledby="actions-heading">
         <h2 id="actions-heading">Care for it</h2>
@@ -169,19 +172,63 @@ const ACTION_PAST_TENSE: Record<string, string> = {
       // (checked lazily on the next request; see src/lib/creature.ts
       // resolveActivity). If this script never ran at all, the badge would
       // just read "sleeping" with no countdown, and the next action or
-      // reload would still resolve correctly.
-      const badge = document.getElementById("activity-badge");
-      const until = badge?.dataset.activityUntil;
-      if (badge && until) {
+      // reload would still resolve correctly. Re-run after every live-state
+      // swap below, since that replaces the badge element entirely.
+      let countdownInterval: ReturnType<typeof setInterval> | undefined;
+      function attachActivityCountdown() {
+        clearInterval(countdownInterval);
+        const badge = document.getElementById("activity-badge");
+        const until = badge?.dataset.activityUntil;
+        if (!badge || !until) return;
         const deadline = new Date(until).getTime();
         const tick = () => {
           const remaining = Math.max(0, Math.round((deadline - Date.now()) / 1000));
           badge.textContent = remaining > 0 ? `sleeping — ${remaining}s` : "waking up…";
-          if (remaining <= 0) clearInterval(interval);
+          if (remaining <= 0) clearInterval(countdownInterval);
         };
         tick();
-        const interval = setInterval(tick, 1000);
+        countdownInterval = setInterval(tick, 1000);
       }
+      attachActivityCountdown();
+
+      // Real-time updates for every OTHER open session: the server pushes a
+      // bare signal (no creature fields at all — see src/lib/sse.ts and
+      // PROCESS.md Decision 5) whenever someone's action commits, and this
+      // just re-fetches the actual server-rendered page and swaps in its
+      // #live-state — the one place that already knows how to render the
+      // creature. There is deliberately no second copy of "what the state
+      // is" kept in this script; it never reads the event's own payload as
+      // if it were the state, only as "go look again."
+      async function refreshLiveState() {
+        const res = await fetch("/");
+        if (!res.ok) return;
+        const html = await res.text();
+        const next = new DOMParser().parseFromString(html, "text/html").getElementById("live-state");
+        const current = document.getElementById("live-state");
+        if (next && current) {
+          current.replaceWith(next);
+          attachActivityCountdown(); // the old badge node is gone; the new one needs its own ticker
+        }
+      }
+
+      const liveIndicator = document.getElementById("live-indicator");
+      function setLive(connected: boolean) {
+        if (!liveIndicator) return;
+        liveIndicator.textContent = connected ? "live" : "reconnecting…";
+        liveIndicator.className = `live-indicator ${connected ? "connected" : "disconnected"}`;
+      }
+
+      // EventSource reconnects on its own after a drop (browser-native,
+      // using the stream's `retry:` hint — see src/pages/api/events.ts) —
+      // nothing extra to implement for that; this only reflects the
+      // current connection state and re-subscribes to the same event name
+      // each time a new connection opens.
+      const events = new EventSource("/api/events");
+      events.addEventListener("open", () => setLive(true));
+      events.addEventListener("error", () => setLive(false));
+      events.addEventListener("update", () => {
+        refreshLiveState();
+      });
     </script>
   </body>
 </html>

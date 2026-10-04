@@ -6,6 +6,7 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { type ActionName, type Activity, type Stats, applyAction, deriveHealth, resolveActivity } from "./creature";
 import { type CareEvent, type Creature, type Session, careEvents, creature, sessions } from "./schema";
+import { broadcastUpdate } from "./sse";
 
 // One SQLite file is the app's whole persistent state. fly.toml mounts a
 // volume at /data (fixed, not to be touched); the Dockerfile points
@@ -175,7 +176,7 @@ export type ActionRejection = { reason: string };
 // PROCESS.md, Decision 4). A rejected action touches nothing: no stats
 // change, no care_events row, no last-actor update.
 export function performAction(action: ActionName, sessionId: string): CreatureState | ActionRejection {
-  return db.transaction((tx) => {
+  const result = db.transaction((tx) => {
     const row = readRow(tx);
     const now = new Date();
     const resolved = resolveActivity(
@@ -202,6 +203,15 @@ export function performAction(action: ActionName, sessionId: string): CreatureSt
 
     return toState(tx, readRow(tx));
   });
+
+  // Broadcast only after the transaction has actually committed, and only
+  // on success — a rejection never reaches here, so it never produces an
+  // update event (src/lib/sse.ts). This runs outside the transaction
+  // deliberately: it's a side effect, not a database write, and it must
+  // never run for a mutation that could still be rolled back.
+  if (!("reason" in result)) broadcastUpdate();
+
+  return result;
 }
 
 export type { CareEvent, Session };

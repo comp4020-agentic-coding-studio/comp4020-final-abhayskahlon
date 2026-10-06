@@ -96,6 +96,54 @@ describe("care history attribution", () => {
   });
 });
 
+// Regression coverage for a bug report: the "Recent care" panel stayed
+// stale after a successful action even though the backend had genuinely
+// recorded it. Root cause was client-side (src/pages/index.astro) — the
+// old success handler trusted `fetch()`'s automatic 303-follow and read a
+// non-OK followed response's body straight into the visible error box,
+// which both skipped the refresh AND risked injecting an HTML document as
+// if it were a plain-text reason. These tests cover the HTTP-level
+// contract that fix relies on: the one thing a browser can't be run here
+// to check directly is the client script itself, so this proves the
+// *server* always gives it what it needs to get this right.
+describe("live-state refresh contract", () => {
+  it("a successful action's new care event appears in the same rendered state as the updated stats", async () => {
+    const a = await newVisitor();
+    const before = await loadHome();
+    const statsBefore = [...before.querySelectorAll(".stat-value")].map((el) => el.textContent);
+
+    const res = await post("/api/actions", a.cookie, new URLSearchParams({ action: "clean" }));
+    expect(res.status).toBe(303);
+
+    // This is exactly what the client's refreshLiveState() fetches: one
+    // GET /, expected to carry the new history entry AND the changed
+    // stats together, never one without the other.
+    const after = await loadHome();
+    const statsAfter = [...after.querySelectorAll(".stat-value")].map((el) => el.textContent);
+    expect(statsAfter, "cleanliness should now read 100").not.toEqual(statsBefore);
+    expect(mostRecentHistoryActor(after)).toBe(lastActorLabel(after));
+    expect(after.querySelector(".history-list")?.textContent).toContain("cleaned the creature");
+  });
+
+  it("never serves an HTML document from a rejected action — the client's content-type guard relies on this", async () => {
+    const a = await newVisitor();
+
+    // An action name the server itself rejects outright.
+    const unknown = await post("/api/actions", a.cookie, new URLSearchParams({ action: "fly" }));
+    expect(unknown.status).toBe(400);
+    expect(unknown.headers.get("content-type") ?? "").not.toContain("html");
+
+    // A valid action name the current state rejects.
+    let rejected: Response | undefined;
+    for (let i = 0; i < 20 && !rejected; i++) {
+      const res = await post("/api/actions", a.cookie, new URLSearchParams({ action: "play" }));
+      if (res.status === 409) rejected = res;
+    }
+    expect(rejected, "expected play to eventually be rejected once energy ran out").toBeDefined();
+    expect(rejected?.headers.get("content-type") ?? "").not.toContain("html");
+  });
+});
+
 describe("rejected actions", () => {
   it("never add a care_events row or change the recorded last action", async () => {
     const a = await newVisitor();

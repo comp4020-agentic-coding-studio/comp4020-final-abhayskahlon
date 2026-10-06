@@ -144,8 +144,22 @@ const ACTION_PAST_TENSE: Record<string, string> = {
       // rejected action's reason just arrives as a plain-text page instead
       // of inline. The server is unchanged either way: still a 303 on
       // success, still a 4xx with a reason on rejection (src/pages/api/
-      // actions.ts). This only makes that reason legible without a full
-      // navigation.
+      // actions.ts).
+      //
+      // The success path used to be `if (res.ok) location.reload()`, which
+      // trusted `fetch()`'s *automatic* following of that 303 — and on
+      // failure, read whatever that response's body happened to be
+      // straight into the visible error box. If that followed chain ever
+      // terminated in something unexpected (a non-OK response — a stray
+      // 404, a CSRF rejection, anything), its full response body, HTML
+      // document included, would get dumped as the "reason" text, and
+      // because `res.ok` was false, `location.reload()` never fired
+      // either: the actor's own tab would show a garbled error while the
+      // server had already committed the action. `res.redirected` is the
+      // one thing fetch exposes unambiguously here: a 303 is the ONLY way
+      // this server's /api/actions response is ever followed anywhere, so
+      // "was redirected" IS "the action is successful" — checked directly,
+      // not inferred from whatever the followed response's status became.
       const errorBox = document.getElementById("action-error");
 
       for (const form of document.querySelectorAll<HTMLFormElement>(".action-form")) {
@@ -154,12 +168,24 @@ const ACTION_PAST_TENSE: Record<string, string> = {
           errorBox?.setAttribute("hidden", "");
 
           const res = await fetch(form.action, { method: "POST", body: new FormData(form) });
-          if (res.ok) {
-            location.reload(); // re-render everything from the server, same as a normal navigation would
+          if (res.redirected) {
+            // Success: re-fetch and swap the COMPLETE live state — stats,
+            // condition, activity, last action, and history together —
+            // the same path an SSE "update" event triggers for everyone
+            // else, so the actor's own tab and every other open tab go
+            // through the exact same, single, tested refresh.
+            await refreshLiveState();
             return;
           }
 
-          const reason = await res.text();
+          // Never trust this body is the short plain-text reason
+          // /api/actions actually sends: if it's ever HTML (a proxy error
+          // page, a misrouted 404, anything that isn't this app's own
+          // response), that's a sign something is wrong upstream, not
+          // content to show a visitor — fall back to a generic message
+          // instead of rendering raw markup as text.
+          const contentType = res.headers.get("content-type") ?? "";
+          const reason = contentType.includes("html") ? "" : await res.text();
           if (errorBox) {
             errorBox.textContent = reason || "that action isn't available right now";
             errorBox.removeAttribute("hidden");
@@ -191,24 +217,39 @@ const ACTION_PAST_TENSE: Record<string, string> = {
       }
       attachActivityCountdown();
 
-      // Real-time updates for every OTHER open session: the server pushes a
-      // bare signal (no creature fields at all — see src/lib/sse.ts and
-      // PROCESS.md Decision 5) whenever someone's action commits, and this
-      // just re-fetches the actual server-rendered page and swaps in its
-      // #live-state — the one place that already knows how to render the
-      // creature. There is deliberately no second copy of "what the state
-      // is" kept in this script; it never reads the event's own payload as
-      // if it were the state, only as "go look again."
+      // Real-time updates for every open session, including the actor's
+      // own tab: the server pushes a bare signal (no creature fields at
+      // all — see src/lib/sse.ts and PROCESS.md Decision 5) whenever
+      // someone's action commits, and this just re-fetches the actual
+      // server-rendered page and swaps in its ENTIRE #live-state — stats,
+      // condition, activity, last action AND the Recent care history
+      // together, in one replacement, since all of it lives inside that
+      // one container and this never swaps in less than the whole thing.
+      // There is deliberately no second copy of "what the state is" kept
+      // in this script; it never reads the event's own payload as if it
+      // were the state, only as "go look again."
+      //
+      // `refreshSeq` guards against a real risk once more than one person
+      // is acting at once (which is the entire premise of this app): two
+      // overlapping refreshes can resolve out of order, and without this,
+      // a slower, now-stale response arriving after a faster, fresher one
+      // would silently overwrite it — stats or history could appear to
+      // "go backwards" to an earlier version. Each call claims the latest
+      // sequence number and checked again after every await; a call that's
+      // no longer the latest discards its own result instead of applying it.
+      let refreshSeq = 0;
       async function refreshLiveState() {
-        const res = await fetch("/");
-        if (!res.ok) return;
+        const seq = ++refreshSeq;
+        const res = await fetch("/", { cache: "no-store" });
+        if (seq !== refreshSeq) return; // superseded by a newer refresh while this one was in flight
+        if (!res.ok) return; // never parse or inject a non-OK response's body
         const html = await res.text();
+        if (seq !== refreshSeq) return; // re-check: the second await is another chance to go stale
         const next = new DOMParser().parseFromString(html, "text/html").getElementById("live-state");
         const current = document.getElementById("live-state");
-        if (next && current) {
-          current.replaceWith(next);
-          attachActivityCountdown(); // the old badge node is gone; the new one needs its own ticker
-        }
+        if (!next || !current) return;
+        current.replaceWith(next);
+        attachActivityCountdown(); // the old badge node is gone; the new one needs its own ticker
       }
 
       const liveIndicator = document.getElementById("live-indicator");

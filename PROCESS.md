@@ -129,12 +129,40 @@ different machine, which is a real limitation this app accepts rather than
 engineers around, for the same one-machine-is-the-fixed-shape reason as
 Decision 4.
 
-**To verify against the real deployment, not just localhost** (tracked, not
-yet done as of this decision):
-- whether Fly's proxy buffers the SSE response (would silently degrade
-  real-time updates to "whenever the buffer flushes");
-- whether `EventSource`'s reconnect behaves sensibly across an
-  `auto_stop_machines` cold start.
+**Verified against the real deployment on 2026-10-06**, after the first
+deploy to `https://comp4020-final-abhayskahlon.fly.dev/` — not assumed from
+localhost behaviour:
+
+- **Latency.** Two independent HTTP sessions (separate cookie jars, separate
+  `/api/events` connections, no shared state) against the live HTTPS URL:
+  an action in one landed in both streams in ~624ms and ~645ms — comfortably
+  under the brief's "about a second," over the real network.
+- **No proxy buffering observed.** The initial `retry:`/`: connected` write
+  and every subsequent 15s heartbeat arrived on schedule over a ~50s idle
+  window, rather than arriving all at once when some buffer eventually
+  flushed. `X-Accel-Buffering: no` appears to be respected (or at least not
+  contradicted) by Fly's proxy for this response.
+- **Reconnect.** Closing a connection and opening a fresh one re-establishes
+  cleanly and immediately resumes receiving live updates — nothing
+  session-specific needs to survive a drop, by design (Decision 5 above).
+- **Autostop.** Confirmed both halves: an open `/api/events` connection kept
+  the machine `started` for a full 5-minute observation window with no other
+  traffic; with the connection closed, the machine did autostop (`started` →
+  `stopped`) within about a minute of being idle, and a subsequent plain
+  request cold-started it correctly (200 OK in ~2.5s). A second attempt to
+  observe the idle-to-stop transition took longer than 4 minutes without
+  stopping — Fly-side timing variability, not something traced to the app.
+- **Persistence.** Survived an actual `flyctl machine restart`: identical
+  state and timestamp read back once the machine came back up, confirming
+  SQLite on the mounted volume — not the Node process's memory — is what
+  survived.
+
+**Known limitation, not yet tested:** the specific case of an SSE connection
+being the *very first* request during a cold boot (rather than a connection
+opened against an already-warm machine, or a plain request triggering the
+cold start). Everything else — cold starts generally working, reconnects
+generally working — is strong indirect evidence this would be fine, but
+that exact combination wasn't isolated and confirmed.
 
 ## Decision 6 — shared custody must be visible, never a leaderboard
 
@@ -178,4 +206,26 @@ and explicitly deferred rather than rejected outright.
 
 ## Commit log (evidence)
 
-<!-- Appended as milestones land; each entry links the commit that did it. -->
+Each entry links the commit that carried out the decision it's filed under.
+
+- Decision 1 (concept) and the harness rules summarising every decision
+  below: [`92b29b2`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/92b29b2991409cd7b78a2624f6d204f2e4c31911)
+- Stack set up (Astro + Node adapter + Drizzle/SQLite, re-derived rather than
+  copied from crit 7; `spec/global-setup.ts` extended to spawn the built
+  server locally while still deferring to CI's own instance when `APP_URL`
+  is set): [`e155a30`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/e155a305defcac42ec076de170539c39a75f37f1)
+- Decisions 2 and 4 (derived health; the one-machine/synchronous-transaction
+  concurrency mechanism) landed as the first vertical slice — schema, seed,
+  the `feed` action, and a manually-verified process restart proving SQLite,
+  not memory, holds the state: [`c8f9c94`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/c8f9c94d99cc867817cc750f95da2539e04268f9)
+- Decision 3 (the five actions and their trade-off table, including sleep's
+  cooldown as the sharpest one): [`940a8e7`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/940a8e704d0cc8b124340b3290c12da9f5cf37b3)
+- Decisions 6, 7 and 8 (visible, unranked shared history; cookie session
+  identity; the 50-row cap) together with the attribution/history/session
+  tests: [`b93ef05`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/b93ef0572eac09728f6dd340a142dbbd9581e2f9)
+- Decision 5 (SSE, broadcast only on a committed mutation, the event as a
+  bare signal never a copy of state) and its tests, including the one that
+  proves the payload itself carries no state fields: [`773da57`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/773da579801c70dcc9d607582d6af7b71d8ab030)
+  — that commit also fixed a pre-existing flaky test (session display
+  labels can legitimately coincide; the attribution test wrongly asserted
+  they couldn't) found while re-running the suite for this milestone.

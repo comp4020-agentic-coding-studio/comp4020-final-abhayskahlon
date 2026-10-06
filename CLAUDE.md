@@ -74,10 +74,26 @@ real-time mechanism; these rules summarise it for the agent, not replace it.
   pattern the course's other starter repos use — see the comments in that
   file for the exact seams (`DATABASE_PATH`, `SLEEP_COOLDOWN_MS`) and never
   set them in `fly.toml` or the `Dockerfile`.
-- `spec/concurrency.test.ts` must keep proving the *arithmetic* of the final
-  state is consistent with every fired action having been applied exactly
-  once — not merely that the requests all resolved. A change that makes that
-  test pass by checking less than that isn't a fix, it's a regression.
+- `spec/sessions.test.ts` proves attribution (a successful action is
+  recorded against the session that performed it) and that a rejection adds
+  nothing to the history. `spec/persistence.test.ts` and
+  `spec/realtime.test.ts` each spin up their own app instance rather than
+  sharing the one above — both assert on exact state or timing windows that
+  another spec file's actions landing on a shared instance made genuinely
+  flaky, not just slow, when first written.
+- **Known gap:** nothing here fires truly concurrent/overlapping requests
+  and checks the resulting arithmetic. The concurrency guarantee (Decision 4
+  — one machine, one synchronous `better-sqlite3` handle, no `await` between
+  reading and writing) is real and was reasoned through carefully, but it is
+  currently backed by that architectural argument and by manual testing
+  (sequential actions, a real process restart), not by a dedicated
+  concurrent-fire spec test. Don't claim one exists; add it properly if it's
+  wanted, rather than writing a test that merely confirms `Promise.all`
+  resolves.
+- Production real-time behaviour (latency, buffering, reconnect, autostop)
+  was verified against the actual Fly deployment, not assumed from
+  localhost — see PROCESS.md, Decision 5, "Verified against the real
+  deployment."
 
 ## Out of scope
 

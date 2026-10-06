@@ -77,7 +77,7 @@ describe("persistence across a restart", () => {
     expect(act.status).toBe(303);
 
     const beforeRestart = await (await fetch(new URL("/", first.baseUrl), { headers: { cookie } })).text();
-    expect(beforeRestart).toContain("fed the creature");
+    expect(beforeRestart).toContain("fed Milo");
 
     first.proc.kill();
     // give the OS a moment to release the file lock before the next
@@ -88,7 +88,7 @@ describe("persistence across a restart", () => {
     runningProc = second.proc;
 
     const afterRestart = await (await fetch(new URL("/", second.baseUrl), { headers: { cookie } })).text();
-    expect(afterRestart).toContain("fed the creature");
+    expect(afterRestart).toContain("fed Milo");
 
     second.proc.kill();
   });

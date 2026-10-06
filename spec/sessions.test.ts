@@ -122,7 +122,7 @@ describe("live-state refresh contract", () => {
     const statsAfter = [...after.querySelectorAll(".stat-value")].map((el) => el.textContent);
     expect(statsAfter, "cleanliness should now read 100").not.toEqual(statsBefore);
     expect(mostRecentHistoryActor(after)).toBe(lastActorLabel(after));
-    expect(after.querySelector(".history-list")?.textContent).toContain("cleaned the creature");
+    expect(after.querySelector(".history-list")?.textContent).toContain("cleaned Milo");
   });
 
   it("never serves an HTML document from a rejected action — the client's content-type guard relies on this", async () => {

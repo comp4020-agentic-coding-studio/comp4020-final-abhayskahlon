@@ -10,6 +10,11 @@ getOrCreateSession(Astro.cookies);
 
 const state = getCreatureState();
 
+// A single, fixed name — not a naming feature. There is nowhere in this
+// app a visitor can set or change it; it's a literal here and in the
+// client script below, same as any other fixed copy.
+const CREATURE_NAME = "Milo";
+
 const STAT_LABELS: Record<"hunger" | "energy" | "happiness" | "cleanliness", string> = {
   hunger: "Fullness",
   energy: "Energy",
@@ -32,6 +37,25 @@ const ACTION_PAST_TENSE: Record<string, string> = {
   clean: "cleaned",
   sleep: "put to sleep",
 };
+
+// Minimal "something just happened" feedback — never its own state, always
+// a direct read of server fields already in `state`. While asleep,
+// `state.activity` is the true current condition and wins outright; once
+// that cooldown has lazily resolved back to "idle" (src/lib/creature.ts),
+// this falls back to whatever the last action actually was, and to a
+// neutral default if nothing has ever happened or the last thing to happen
+// was itself the sleep that's now over.
+const ACTIVITY_DOING: Partial<Record<string, string>> = {
+  feed: `${CREATURE_NAME} is eating`,
+  play: `${CREATURE_NAME} is playing`,
+  walk: `${CREATURE_NAME} is out for a walk`,
+  clean: `${CREATURE_NAME} is being cleaned`,
+};
+
+const activityPhrase =
+  state.activity === "sleeping"
+    ? `${CREATURE_NAME} is sleeping`
+    : (state.lastAction && ACTIVITY_DOING[state.lastAction]) || `${CREATURE_NAME} is awake`;
 ---
 
 <!doctype html>
@@ -53,20 +77,20 @@ const ACTION_PAST_TENSE: Record<string, string> = {
     <main>
       <h1>COMMONS</h1>
       <p>
-        One shared creature, cared for by everyone here right now — not your
-        own pet, everyone's.
+        Everyone here is looking after {CREATURE_NAME} — one shared creature,
+        not your own pet.
       </p>
       <p class="live-indicator" id="live-indicator">connecting…</p>
 
       <div id="live-state">
         <section class="panel" aria-labelledby="creature-heading">
-          <h2 id="creature-heading">The creature</h2>
+          <h2 id="creature-heading">{CREATURE_NAME}</h2>
           <span
             class={`activity-badge ${state.activity}`}
             id="activity-badge"
             data-activity-until={state.activityUntil ?? ""}
           >
-            {state.activity === "sleeping" ? "sleeping" : "awake"}
+            {activityPhrase}
           </span>
 
           {
@@ -104,7 +128,7 @@ const ACTION_PAST_TENSE: Record<string, string> = {
         <section class="panel" aria-labelledby="history-heading">
           <h2 id="history-heading">Recent care</h2>
           <p class="panel-note">
-            Everyone who's cared for this creature recently — not a leaderboard, just what happened and who was
+            Everyone who's cared for {CREATURE_NAME} recently — not a leaderboard, just what happened and who was
             there.
           </p>
           {state.history.length === 0 && <p class="panel-note">Nothing yet — be the first.</p>}
@@ -112,7 +136,7 @@ const ACTION_PAST_TENSE: Record<string, string> = {
             {
               state.history.map((entry) => (
                 <li>
-                  <strong>{entry.actorLabel}</strong> {ACTION_PAST_TENSE[entry.action] ?? entry.action} the creature (
+                  <strong>{entry.actorLabel}</strong> {ACTION_PAST_TENSE[entry.action] ?? entry.action} {CREATURE_NAME} (
                   {entry.summary}) — {entry.createdAt}
                 </li>
               ))
@@ -122,7 +146,7 @@ const ACTION_PAST_TENSE: Record<string, string> = {
       </div>
 
       <section class="panel" aria-labelledby="actions-heading">
-        <h2 id="actions-heading">Care for it</h2>
+        <h2 id="actions-heading">Care for {CREATURE_NAME}</h2>
         <div class="actions">
           {
             ACTIONS.map((action) => (
@@ -197,9 +221,13 @@ const ACTION_PAST_TENSE: Record<string, string> = {
       // the server, not this script, decides when sleep actually ends
       // (checked lazily on the next request; see src/lib/creature.ts
       // resolveActivity). If this script never ran at all, the badge would
-      // just read "sleeping" with no countdown, and the next action or
-      // reload would still resolve correctly. Re-run after every live-state
-      // swap below, since that replaces the badge element entirely.
+      // just read "Milo is sleeping" with no countdown, and the next action
+      // or refresh would still resolve correctly. Re-run after every
+      // live-state swap below, since that replaces the badge element
+      // entirely — the server-rendered text it starts with (computed from
+      // state.activity / state.lastAction, never invented here) is what
+      // this only ever adds a live countdown on top of.
+      const CREATURE_NAME = "Milo"; // the same fixed name as the frontmatter above, not a shared config — see there
       let countdownInterval: ReturnType<typeof setInterval> | undefined;
       function attachActivityCountdown() {
         clearInterval(countdownInterval);
@@ -209,7 +237,8 @@ const ACTION_PAST_TENSE: Record<string, string> = {
         const deadline = new Date(until).getTime();
         const tick = () => {
           const remaining = Math.max(0, Math.round((deadline - Date.now()) / 1000));
-          badge.textContent = remaining > 0 ? `sleeping — ${remaining}s` : "waking up…";
+          badge.textContent =
+            remaining > 0 ? `${CREATURE_NAME} is sleeping — ${remaining}s` : `${CREATURE_NAME} is waking up…`;
           if (remaining <= 0) clearInterval(countdownInterval);
         };
         tick();

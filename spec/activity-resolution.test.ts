@@ -119,6 +119,7 @@ describe("activity resolution consistency", () => {
     // `play` (happiness up, hunger and energy down) until energy runs out.
     let finalStatus: number | undefined;
     let finalReason: string | undefined;
+    let finalContentType: string | null = null;
     for (let cycle = 0; cycle < 10; cycle++) {
       await post("/api/actions", cookie, new URLSearchParams({ action: "sleep" }));
       await new Promise((resolve) => setTimeout(resolve, SLEEP_COOLDOWN_MS + 200));
@@ -129,6 +130,7 @@ describe("activity resolution consistency", () => {
 
       const attempt = await post("/api/actions", cookie, new URLSearchParams({ action: "sleep" }));
       finalStatus = attempt.status;
+      finalContentType = attempt.headers.get("content-type");
       finalReason = await attempt.text();
       if (finalStatus === 409 && finalReason === "too hungry to sleep") break;
     }
@@ -139,5 +141,16 @@ describe("activity resolution consistency", () => {
     // would mean validation still (wrongly) thought it was asleep.
     expect(finalReason).not.toBe("already asleep");
     expect(finalReason).toBe("too hungry to sleep");
+
+    // This is the exact contract src/pages/index.astro's
+    // readRejectionReason() relies on to show this reason safely: plain
+    // text, never HTML, so it can always be rendered as text and never
+    // needs to fall back to the generic message. A regression here (e.g.
+    // some future middleware wrapping rejections in an HTML error page)
+    // would make this reason silently disappear from the UI even though
+    // the server sent it.
+    expect(finalContentType?.toLowerCase()).not.toContain("html");
+    expect(finalContentType?.toLowerCase()).toContain("text/plain");
+    expect(finalReason).not.toMatch(/[<>]/);
   });
 });

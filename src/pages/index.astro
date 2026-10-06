@@ -186,6 +186,24 @@ const activityPhrase =
       // not inferred from whatever the followed response's status became.
       const errorBox = document.getElementById("action-error");
 
+      // The server is the only source of truth for why an action was
+      // rejected — this never guesses, constructs, or duplicates a reason
+      // client-side; it only ever reads exactly what /api/actions sent
+      // (e.g. "too hungry to sleep", "the creature is asleep right now").
+      // The one thing it refuses to trust blindly is the response's own
+      // CONTENT-TYPE: if that's ever HTML (a proxy error page, a misrouted
+      // 404, anything that isn't this app's own plain-text response),
+      // that's a sign something is wrong upstream, not content to show a
+      // visitor — never rendered, not even as plain text. Returns null,
+      // never an empty string, whenever there's no safe reason to show, so
+      // the generic fallback is the caller's decision, not this one's.
+      async function readRejectionReason(res: Response): Promise<string | null> {
+        const contentType = (res.headers.get("content-type") ?? "").toLowerCase();
+        if (contentType.includes("html")) return null;
+        const text = await res.text();
+        return text.length > 0 ? text : null;
+      }
+
       for (const form of document.querySelectorAll<HTMLFormElement>(".action-form")) {
         form.addEventListener("submit", async (event) => {
           event.preventDefault();
@@ -202,16 +220,9 @@ const activityPhrase =
             return;
           }
 
-          // Never trust this body is the short plain-text reason
-          // /api/actions actually sends: if it's ever HTML (a proxy error
-          // page, a misrouted 404, anything that isn't this app's own
-          // response), that's a sign something is wrong upstream, not
-          // content to show a visitor — fall back to a generic message
-          // instead of rendering raw markup as text.
-          const contentType = res.headers.get("content-type") ?? "";
-          const reason = contentType.includes("html") ? "" : await res.text();
+          const reason = await readRejectionReason(res);
           if (errorBox) {
-            errorBox.textContent = reason || "that action isn't available right now";
+            errorBox.textContent = reason ?? "that action isn't available right now";
             errorBox.removeAttribute("hidden");
           }
 

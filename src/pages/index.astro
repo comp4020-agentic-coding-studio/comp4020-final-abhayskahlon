@@ -158,15 +158,6 @@ const activityPhrase =
           }
         </div>
         <p class="action-error" id="action-error" hidden></p>
-
-        <!-- TEMPORARY DIAGNOSTIC PANEL — added solely to investigate a
-             production report that a real browser click shows the generic
-             rejection message while every scripted HTTP test against the
-             same URL returns a clean success. Delete this element, the
-             matching .diagnostic-panel rule in src/styles.css, and the
-             clearly-labelled diagnostic block in the <script> below once
-             the real cause is found. Not a feature. -->
-        <pre class="diagnostic-panel" id="diagnostic-panel" hidden></pre>
       </section>
     </main>
 
@@ -213,86 +204,33 @@ const activityPhrase =
         return text.length > 0 ? text : null;
       }
 
-      // ============================================================
-      // TEMPORARY DIAGNOSTIC INSTRUMENTATION — added solely to
-      // investigate a production report: a real browser click shows the
-      // generic rejection message while every scripted HTTP test against
-      // the same URL, for every action, returns a clean success. This
-      // changes NOTHING about action semantics, server behaviour, or the
-      // SSE architecture — it only OBSERVES, via a cloned response, what
-      // this specific browser's fetch() actually produced, so the next
-      // click captures real ground truth instead of more guessing from
-      // outside the browser. Reads no cookie, no session id, nothing
-      // beyond response metadata and the first 200 characters of the
-      // body (which is this app's own short plain-text rejection reason,
-      // or the homepage HTML on success — never anything sensitive).
-      //
-      // TO REMOVE once the cause is found: delete this whole block, the
-      // two `void logActionDiagnostic(...)` call sites below, the
-      // `<pre id="diagnostic-panel">` element above the script, and the
-      // `.diagnostic-panel` rule in src/styles.css.
-      const diagnosticPanel = document.getElementById("diagnostic-panel");
-      async function logActionDiagnostic(
-        actionName: string,
-        res: Response,
-        bodyClone: Response,
-        branch: "success" | "rejection",
-      ): Promise<void> {
-        let bodyText: string;
-        try {
-          bodyText = await bodyClone.text();
-        } catch {
-          bodyText = "(could not read response body)";
-        }
-        const report = {
-          action: actionName,
-          branch,
-          status: res.status,
-          redirected: res.redirected,
-          url: res.url,
-          // Usually null once fetch() has auto-followed a redirect — the
-          // Location header belongs to the 303 response fetch() already
-          // consumed internally, not to this final one. Null here is
-          // expected, not itself a problem; a NON-null value here would
-          // be the interesting finding.
-          location: res.headers.get("location"),
-          contentType: res.headers.get("content-type"),
-          bodyLength: bodyText.length,
-          bodyPreview: bodyText.slice(0, 200),
-        };
-        console.log("[COMMONS TEMP DIAGNOSTIC]", report);
-        if (diagnosticPanel) {
-          diagnosticPanel.hidden = false;
-          diagnosticPanel.textContent =
-            "TEMPORARY DIAGNOSTIC — remove after investigation\n\n" +
-            Object.entries(report)
-              .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
-              .join("\n");
-        }
-      }
-      // ============================================================
-      // END TEMPORARY DIAGNOSTIC INSTRUMENTATION (definition). The two
-      // call sites inside the submit handler below are also labelled.
-      // ============================================================
-
       for (const form of document.querySelectorAll<HTMLFormElement>(".action-form")) {
         form.addEventListener("submit", async (event) => {
           event.preventDefault();
           errorBox?.setAttribute("hidden", "");
 
           const formData = new FormData(form);
-          const actionName = String(formData.get("action") ?? "(unknown)");
 
-          const res = await fetch(form.action, { method: "POST", body: formData });
-
-          // TEMPORARY DIAGNOSTIC: clone before either branch below reads
-          // the body, so this observes without disturbing the real logic
-          // at all — the original `res` is consumed exactly as before.
-          const diagnosticClone = res.clone();
+          // Not form.action: this form has a control named "action" (the
+          // hidden input carrying which action this is), and a named form
+          // control shadows the form element's own built-in `action`
+          // property in real browsers — form.action resolves to that
+          // HTMLInputElement, not the URL string, and fetch() silently
+          // stringifies it to "[object HTMLInputElement]". getAttribute()
+          // reads the literal attribute value, bypassing that shadowing
+          // entirely, and is what a real Chrome diagnostic (status 404,
+          // url ending in "/[object%20HTMLInputElement]") confirmed was
+          // actually happening — never reproduced by any scripted request,
+          // since those never touched the DOM's `form.action` property at
+          // all. Never rename the "action" input to dodge this: the
+          // server's whole validated vocabulary (src/lib/creature.ts
+          // ACTIONS, src/pages/api/actions.ts's form.get("action")) is
+          // built around that field name, and it's correct — the bug was
+          // purely in how the URL got read on this side.
+          const actionUrl = form.getAttribute("action") ?? "/api/actions";
+          const res = await fetch(actionUrl, { method: "POST", body: formData });
 
           if (res.redirected) {
-            // TEMPORARY DIAGNOSTIC — remove this line with the rest.
-            void logActionDiagnostic(actionName, res, diagnosticClone, "success");
             // Success: re-fetch and swap the COMPLETE live state — stats,
             // condition, activity, last action, and history together —
             // the same path an SSE "update" event triggers for everyone
@@ -303,8 +241,6 @@ const activityPhrase =
           }
 
           const reason = await readRejectionReason(res);
-          // TEMPORARY DIAGNOSTIC — remove this line with the rest.
-          void logActionDiagnostic(actionName, res, diagnosticClone, "rejection");
           if (errorBox) {
             errorBox.textContent = reason ?? "that action isn't available right now";
             errorBox.removeAttribute("hidden");

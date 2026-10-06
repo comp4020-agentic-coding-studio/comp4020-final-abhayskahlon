@@ -188,22 +188,3 @@ main {
   color: var(--color-warn);
   margin-right: 0.3rem;
 }
-
-/* ============================================================
-   TEMPORARY DIAGNOSTIC STYLE — added solely to investigate a production
-   report (see src/pages/index.astro for the matching script and markup).
-   Not a feature. Delete this whole rule along with its markup/script once
-   the cause is found.
-   ============================================================ */
-.diagnostic-panel {
-  margin-top: 0.75rem;
-  padding: 0.75rem;
-  border: 2px dashed var(--color-warn);
-  border-radius: var(--radius);
-  background: #fff8f0;
-  color: var(--color-text);
-  font-family: ui-monospace, monospace;
-  font-size: 0.78rem;
-  white-space: pre-wrap;
-  word-break: break-word;
-}

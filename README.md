@@ -1,13 +1,13 @@
 # COMMONS
 
-One creature. Not one each — one, shared by everyone currently looking at
-this page. A stranger who visits can feed it, play with it, walk it, clean
-it, or let it sleep, and the next stranger who visits sees exactly what that
-first one left behind: the creature's current needs, and a short, chronological
-record of who did what. There's no login — a lightweight, anonymous cookie is
-enough to tell visitors apart — and every action both helps the creature and
-costs something, so one person's choice changes what the next person should
-reasonably do next.
+One creature, Milo. Not one each — one, shared by everyone currently looking
+at this page. A stranger who visits can feed, play with, walk, clean, or put
+Milo to sleep, and the next stranger who visits sees exactly what that first
+one left behind: Milo's current needs, and a short, chronological record of
+who did what. There's no login — a lightweight, anonymous cookie is enough to
+tell visitors apart — and most actions both help Milo and cost something
+(cleaning is the one free action), so one person's choice changes what the
+next person should reasonably do next.
 
 ## What "good" means here (v1)
 

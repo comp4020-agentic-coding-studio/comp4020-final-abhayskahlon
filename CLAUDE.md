@@ -1,11 +1,19 @@
 # COMMONS — project rules
 
-A single shared digital creature, cared for collectively by everyone
+A single shared digital creature, Milo, cared for collectively by everyone
 currently using the room. The central design question — what happens when
 responsibility for one persistent being is shared across several people —
 and every decision behind the current shape of the app lives in
-`PROCESS.md`. Read it before changing the schema, the action rules, or the
-real-time mechanism; these rules summarise it for the agent, not replace it.
+`PROCESS.md`, including three real bugs found via human playtesting and how
+each was actually diagnosed and fixed ("Incidents found via human
+playtesting"). Read PROCESS.md before changing the schema, the action
+rules, or the real-time mechanism; these rules summarise it for the agent,
+not replace it.
+
+The name "Milo" is a fixed literal (`src/pages/index.astro`, in both the
+frontmatter and the client script) — not a naming feature, nowhere settable
+by a visitor. Don't add a naming system; don't let the two literals drift
+apart if one of them ever needs editing.
 
 ## The database is the only source of truth
 
@@ -30,6 +38,18 @@ real-time mechanism; these rules summarise it for the agent, not replace it.
   the threshold, `sleep` while already asleep) is rejected with a `4xx`
   response and a reason string — never silently clamped into something
   valid, never coerced, never dropped without a response the caller can see.
+  A rejection never creates a `care_events` row and never changes stats or
+  `last_actor_session_id`. The one narrow exception, added after Incident 2
+  in PROCESS.md: `resolveAndSync()` may still write `activity`/
+  `activity_until` during a rejected action's validation, but only to
+  correct a sleep cooldown that has already, unconditionally expired —
+  that's housekeeping matching what the very next read would do regardless,
+  never the rejected action's own effect.
+- The client never invents, guesses, or reconstructs a rejection reason:
+  `readRejectionReason()` in `src/pages/index.astro` only ever shows
+  exactly what `/api/actions` sent, and refuses to render a response whose
+  content-type is HTML (see PROCESS.md, Incident 1) rather than ever
+  display raw markup as if it were a reason.
 - All four stats always stay inside `[0, 100]`. `health`/condition is never
   stored or mutated directly — it is computed from the other four on every
   read (see PROCESS.md, Decision 2). Don't add a `health` column or a
@@ -50,12 +70,50 @@ real-time mechanism; these rules summarise it for the agent, not replace it.
 ## Real-time is SSE, and the database stays authoritative through it
 
 - `src/lib/sse.ts` broadcasts to open `/api/events` connections after a
-  mutation commits. The broadcast payload is never the only place a piece of
-  state lives — a client that reconnects can always re-fetch current state
-  from `GET /`, because nothing in the SSE payload isn't already in SQLite.
+  mutation commits — on success only; a rejection never reaches
+  `broadcastUpdate()`. The broadcast payload is a bare signal (`{}`), never
+  a copy of state — a client that reconnects, or that gets this signal,
+  always re-fetches current state from `GET /`, because nothing in the SSE
+  payload isn't already in SQLite.
+- `refreshLiveState()` in `src/pages/index.astro` is the one place that
+  re-fetch happens, and it always swaps the *complete* `#live-state` (stats,
+  condition, activity, last action, and history together) — never a
+  subset. It runs after an SSE `update` event for every other open tab,
+  and — since Incident 1 in PROCESS.md — after the actor's own action too,
+  on **both** success and rejection: a rejection can mean this tab's own
+  view was stale (it missed an event), and refreshing is what makes that
+  visible instead of leaving a stale badge next to a reason that
+  contradicts it. Don't special-case the actor's own tab back to a
+  different mechanism (a full `location.reload()`, a partial DOM patch) —
+  that divergence between "my own action" and "someone else's action,
+  seen live" is exactly what caused Incident 1.
 - Don't add polling or WebSockets alongside this without a new decision
   record explaining why SSE stopped being sufficient (PROCESS.md Decision
   5).
+
+## Never read `form.action` — use `getAttribute("action")`
+
+- Every action form carries a hidden input `name="action"`. Per the
+  HTML/DOM named-property algorithm, that control **shadows**
+  `HTMLFormElement`'s own built-in `action` property in real browsers:
+  `form.action` resolves to the input element itself, not the URL string,
+  and `fetch(form.action, …)` silently stringifies it to
+  `"[object HTMLInputElement]"` — a real production bug (PROCESS.md,
+  Incident 3), found only by a human clicking a real button, never by any
+  scripted test, because every script calls `fetch()` with a hand-built URL
+  string and never touches a real DOM form.
+- The fix, `form.getAttribute("action")`, is what's in the code now and
+  must stay. Don't revert to `form.action`. Don't rename the `"action"`
+  input to dodge this either — the server's whole validated vocabulary
+  (`src/lib/creature.ts`'s `ACTIONS`, `src/pages/api/actions.ts`'s
+  `form.get("action")`) is built around that field name and is correct; the
+  bug was purely in how the client located the URL.
+- `spec/action-form-url.test.ts` guards this with a static source check
+  (`fetch(form.action` must never reappear) — jsdom itself doesn't
+  reproduce the shadowing, so that test can't exercise the original
+  failure, only the fix and the regression guard. Don't treat that test
+  passing as proof the shadowing can't recur in a real browser; it proves
+  the known-bad pattern hasn't crept back into the source.
 
 ## Session identity is a cookie, not an account
 
@@ -94,6 +152,20 @@ real-time mechanism; these rules summarise it for the agent, not replace it.
   was verified against the actual Fly deployment, not assumed from
   localhost — see PROCESS.md, Decision 5, "Verified against the real
   deployment."
+- `spec/activity-resolution.test.ts` (its own instance, `SLEEP_COOLDOWN_MS`
+  overridden short) proves the consistency property behind Incident 2:
+  once a sleep cooldown has genuinely passed, the very next action
+  succeeds with no GET in between, and a later rejection names the
+  actually-applicable rule (e.g. "too hungry to sleep"), never a
+  stale "already asleep".
+- `spec/action-form-url.test.ts` guards Incident 3 (see "Never read
+  `form.action`" above) — the one spec file here that constructs a real
+  DOM form element rather than only calling `fetch()` with a hand-built
+  URL string, and the only one that can catch this class of bug at all.
+- Every spec file above was written to protect a real, previously-reported
+  or previously-reasoned-about failure — not added speculatively. Don't add
+  a new one without a specific invariant it protects that nothing else
+  here already covers.
 
 ## Out of scope
 

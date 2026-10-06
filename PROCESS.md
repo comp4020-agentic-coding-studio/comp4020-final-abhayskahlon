@@ -196,6 +196,24 @@ pruned on insert. "A small persistent care history" is read here as a
 deliberate bound, stated once, not an accidental drop of old data discovered
 later.
 
+## Decision 9 — a single fixed name, Milo
+
+**Decision.** The creature is named "Milo" — one literal string, in the
+server-rendered page and in the client script, nowhere settable by a
+visitor. Replaces every generic "the creature" in the rendered UI and
+history text ("fed Milo", not "fed the creature"); adds minimal, literal
+activity feedback ("Milo is eating" / "playing" / "out for a walk" /
+"being cleaned" / "sleeping — Ns") computed entirely from fields the server
+already sends (`state.activity`, `state.lastAction`) — no new state, no
+second source of truth.
+
+**Why.** Explicitly requested as its own small UI-only correction, landed
+after the core mechanics (Decisions 1–8) were already built and tested, not
+as a new mechanic: a fixed name and a present-tense "what's happening"
+phrase make the shared creature feel like one specific, continuous thing
+worth caring about, without adding any naming system, character creation,
+or new server-side concept — see commit `a19b9a3`.
+
 ## Out of scope for this deliverable (unchanged from the course's own list)
 
 No accounts/profiles, chat, voting/likes, maps, push/SMS/email
@@ -203,6 +221,170 @@ notifications, admin dashboards, machine learning — and, specific to this
 concept, no leaderboards, achievements, shops, inventories, multiple
 creatures, or AI. The neglect callout (Decision 3) is the one idea considered
 and explicitly deferred rather than rejected outright.
+
+## Incidents found via human playtesting
+
+Three real bugs, found in this order, each with its own fix. Recorded
+plainly, including what turned out not to be the cause, because the
+sequence is itself the evidence the brief asks for: automated correctness
+checks and human browser testing catch genuinely different things.
+
+### Incident 1 — the live-state refresh wasn't one path
+
+**Reported.** After a successful action, "Recent care" sometimes looked
+stale while other state appeared to update.
+
+**Investigation.** `#live-state`'s markup already correctly wrapped both
+the stats and the history sections (confirmed directly against the
+rendered output), so a selective, partial update wasn't structurally
+possible. The real problems were upstream of the markup: the own-action
+success path trusted `fetch()`'s *automatic* following of the POST's 303
+redirect and used `res.ok` on the followed response as a proxy for
+success; if that chain ever landed on a non-OK response for any reason,
+its raw body — HTML included — would get read as the rejection "reason"
+and shown to the visitor, and because `res.ok` was false, the success
+reload never fired either. Separately, the actor's own action and the
+other sessions' SSE-triggered updates ran through two different
+mechanisms (`location.reload()` vs. a targeted refetch), which is exactly
+the kind of divergence that lets two code paths silently drift apart.
+
+**Fix** (`43016f5`). Both paths now go through one `refreshLiveState()`
+function that always swaps the complete `#live-state`. Success is detected
+via `res.redirected` (a 303 to `/` is the only way this server's
+`/api/actions` response is ever followed), checked directly rather than
+inferred from the followed response's eventual status. A rejection's body
+is never rendered if its content-type is HTML. A monotonic sequence guard
+in `refreshLiveState()` discards an out-of-order response from an
+overlapping refresh, which matters once more than one person is acting at
+once — the entire premise of this app.
+
+### Incident 2 — activity-expiry resolution wasn't fully unified
+
+**Reported.** A later human playtest showed the activity badge reading
+"Milo is awake" at the same moment an action attempt was rejected.
+
+**Investigation.** Extensive, deliberately adversarial reproduction before
+any fix: five trials polling at the exact 8-second cooldown boundary and
+firing an action inside that window: every one succeeded cleanly, no race
+found. Every distinct rejection reason checked individually for
+content-type and body: all `text/plain`, all non-empty — none could
+produce a generic fallback message. Astro's own CSRF-rejection response
+checked the same way. Multipart `FormData` bodies tested explicitly,
+matching what a real form submission sends, not the url-encoded bodies
+every script (including the existing spec suite) had used until then.
+`res.redirected` checked against the actual production deployment, not
+just localhost. **None of this reproduced a case where the GET/render path
+and the POST/validate path actually disagreed on the decision** — both
+already called the same `resolveActivity()` function, freshly, at request
+time. What the investigation did find: `toState()` computed the lazy
+sleep-to-idle resolution for display but never persisted it back to the
+row, and `performAction()` only ever wrote state as a side effect of a
+*successful* mutation — so the stored row could say "sleeping" with a
+long-expired timestamp indefinitely, correct only because every reader
+happened to independently re-derive the truth every time.
+
+**Fix** (`11619a6`). `resolveAndSync()` is now the one function both the
+read path and the write path call; it persists the sleep→idle transition
+the moment it's discovered, including as a side effect of a *rejected*
+action's validation (that write is housekeeping correcting time that's
+already passed, not the action's own effect — it never touches stats or
+`care_events`). The client's form handler now calls `refreshLiveState()`
+after every attempt, success or rejection, so a rejection that reveals a
+stale client view self-corrects immediately instead of leaving a
+contradiction on screen.
+
+**Honestly stated at the time, and still true in hindsight:** this fix
+closed a real architectural gap and made the system more robust, but the
+investigation never produced a reproducible case of the *exact* reported
+symptom, and the symptom recurred after this fix shipped (see Incident 3).
+This dead end is left in the record rather than quietly dropped.
+
+### Incident 3 — the browser-only `form.action` bug
+
+**Reported.** The same symptom as Incident 2, again, in production, after
+Incident 2's fix had shipped and been verified both by scripted tests and
+a server-side deployment check.
+
+**Direction received.** Stop making speculative UI changes; do a forensic
+diagnosis instead, against the live deployment, not another scripted
+reproduction. When a hard reload of the live page didn't change anything,
+that specific hypothesis (a stale, previously-loaded browser tab) was
+explicitly ruled out and dropped — the instruction was not to re-assert it
+and not to ask for another reload. The next instruction was explicit: do
+not accept "cannot reproduce" as the conclusion, since the human browser
+test had reproduced it repeatedly.
+
+**What repeated scripted investigation established, and its limit.**
+Every single-submission HTTP request against the live production app,
+matching the real client's cookies, `Origin` header and multipart body
+exactly, returned a clean `303` for all five actions, every time. The
+server was provably correct and consistent. That consistency was itself
+the signal that the missing variable had to be in the actual browser
+runtime — something no script run from outside a real DOM could exercise.
+
+**Diagnostic instrumentation** (`f76fee0`, fully removed by `a8d100c`).
+Temporary, clearly-labelled client-side logging added to the one real
+request path: on every action submission, logged (to the console and a
+small on-page panel) which action was submitted, which branch the handler
+took, `res.status`, `res.redirected`, `res.url`, the `Location` header,
+`Content-Type`, and the first 200 characters of the body. Read a *clone*
+of the response so the real logic was completely undisturbed; read no
+cookie or session id. Deployed, and the student performed exactly one real
+click in their own desktop Chrome.
+
+**The captured evidence, verbatim:**
+```
+action: "feed"
+branch: "rejection"
+status: 404
+redirected: false
+url: "https://comp4020-final-abhayskahlon/[object%20HTMLInputElement]"
+contentType: "text/html"
+```
+
+**Root cause, read directly off that evidence.** Each action form carries
+a hidden input named `"action"` — the field the server validates against
+(`src/lib/creature.ts`'s `ACTIONS`, `src/pages/api/actions.ts`'s
+`form.get("action")`). Per the HTML/DOM "named property" algorithm, a form
+control's `name` becomes a property on its form element, and in real
+browsers that control **shadows** `HTMLFormElement`'s own built-in
+`action` property: `form.action` stopped being the URL string and became
+the `HTMLInputElement` itself, and `fetch(form.action, …)` silently
+stringified that to `"[object HTMLInputElement]"` — a 404, whose HTML
+content-type correctly (and, until diagnosed, misleadingly) tripped the
+Incident 1 content-type guard, returning no reason to show. There was
+never a real server rejection; the request never reached `/api/actions`
+at all. This is exactly why no scripted HTTP test — not mine, not the
+existing spec suite — ever reproduced it: none of them read `form.action`
+from a real DOM. They all call `fetch()` with a hand-built URL string,
+which was always correct, which is precisely why the server side kept
+checking out clean.
+
+**Fix** (`a8d100c`). Read `form.getAttribute("action")` instead of
+`form.action` — the literal attribute value, never subject to
+named-property shadowing. The `"action"` input was deliberately **not**
+renamed: the server's whole validated vocabulary is built around that
+field name and was always correct; the bug was purely in how the client
+located the URL.
+
+**Regression coverage** (`spec/action-form-url.test.ts`). Asserts every
+action form's `getAttribute("action")` resolves to `/api/actions`; asserts
+each form still carries the named `"action"` control (the condition that
+caused the shadowing, so the test keeps meaning something); a static
+source check that `fetch(form.action` never reappears. **Stated
+limitation, in the test itself:** jsdom — this project's only DOM engine,
+per its established no-mocking-library convention — does not reproduce
+the shadowing; its `HTMLFormElement` implementation always returns the
+reflected URL regardless of a same-named control. The test cannot
+exercise the original failure directly; it proves the fixed path is
+correct and guards against reverting to the broken one, which is what was
+practical without real browser automation.
+
+**Verified afterward:** the fix redeployed, and the student's own
+two-browser playtest — Feed through all five actions, stats/Last
+action/Recent care updating together, a second independent session
+receiving the same update live via SSE with no reload, rejected actions
+showing their specific reason, sleep's countdown and expiry — passed.
 
 ## Commit log (evidence)
 
@@ -229,3 +411,23 @@ Each entry links the commit that carried out the decision it's filed under.
   — that commit also fixed a pre-existing flaky test (session display
   labels can legitimately coincide; the attribution test wrongly asserted
   they couldn't) found while re-running the suite for this milestone.
+- README v1 (the definition of good and its grounding), Decision 5's
+  verified-against-the-real-deployment findings, and this commit log's
+  first citations: [`95f352b`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/95f352b4c7dbebb29db0f7fac64eb4c3c1061b70)
+- The dedicated concurrency regression test referenced in Decision 4,
+  closing the gap between "the architecture guarantees this" and "a test
+  proves it": [`01dfeee`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/01dfeee4a98fd820d7130bccba07d45214c919d2)
+- Incident 1 (the live-state refresh wasn't one path): [`43016f5`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/43016f5a7d7fa59f3834389a51c8f4d8a4ec0ba2)
+- Decision 9 (Milo): [`a19b9a3`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/a19b9a35c8dc240ba5c6b4852cd72c86c31b5e69)
+- Incident 2 (activity-expiry resolution unified, resync-on-every-attempt):
+  [`11619a6`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/11619a676a4a3fb3a166fa490af4157d8bf341e6)
+- A verification and hardening pass on the rejection-reason path
+  (case-insensitive content-type check, the reason-reading logic extracted
+  into one named, auditable function) — done to confirm, not to fix a
+  reproduced bug; the symptom it was investigating turned out to be
+  Incident 3, found next: [`0b237ca`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/0b237ca2decb2a96d67d804ee267f661397165cf)
+- The temporary diagnostic instrumentation that captured Incident 3's
+  evidence, deployed deliberately and removed in the very next commit:
+  [`f76fee0`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/f76fee0ac0ff5bcfd2af30ce387cfce06526def8)
+- Incident 3's actual fix (`form.getAttribute("action")`), full removal of
+  the diagnostic instrumentation, and its regression test: [`a8d100c`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/a8d100c3e3e50c9f2175a6364048ca8f68eb5001)

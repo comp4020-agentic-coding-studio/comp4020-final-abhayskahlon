@@ -214,6 +214,17 @@ const activityPhrase =
             errorBox.textContent = reason || "that action isn't available right now";
             errorBox.removeAttribute("hidden");
           }
+
+          // A rejection means this tab's own view of Milo might be exactly
+          // what caused it — e.g. this tab still showed "awake" because it
+          // missed the event for a sleep someone else (or this same tab,
+          // earlier) triggered, and the server, correctly, just said
+          // otherwise. Refreshing here is what makes that visible instead
+          // of leaving a stale badge sitting right next to a reason that
+          // contradicts it: the one authoritative picture is always
+          // whatever the server just said, never whatever this tab
+          // happened to be showing before it asked.
+          await refreshLiveState();
         });
       }
 

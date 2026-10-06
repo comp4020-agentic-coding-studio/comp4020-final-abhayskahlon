@@ -123,22 +123,57 @@ function listRecentCareHistory(handle: Handle, limit: number): CareHistoryEntry[
     .all();
 }
 
-function toState(handle: Handle, row: Creature): CreatureState {
+// The ONE place a lazily-expired sleep gets resolved — used by both the
+// read path (toState, below) and the write path (performAction's
+// validation step). Unlike a bare call to resolveActivity, this doesn't
+// just compute the answer transiently for whoever happened to ask: the
+// moment it discovers the cooldown has genuinely passed, it writes that
+// back to the stored row immediately, rather than leaving the database
+// saying "sleeping" with a long-expired timestamp indefinitely and relying
+// on every future caller to independently re-derive the truth. Every
+// decision this app makes was already correct before this existed — every
+// call site resolved fresh, every time — but the STORED row itself could
+// silently disagree with that effective truth for as long as nothing else
+// happened to write to it. This closes that gap: stored and effective
+// truth never drift apart for longer than one request.
+//
+// Deliberately called from performAction's validation step too, even for
+// an action that goes on to be REJECTED for some unrelated reason (too
+// tired, too hungry): that write isn't the action's own effect — it's
+// bookkeeping that corrects the row to match time that has already,
+// unconditionally passed, identical to what the very next read would do
+// regardless of whether this particular action succeeds.
+function resolveAndSync(handle: Handle, row: Creature, now: Date): Creature {
   const resolved = resolveActivity(
     { stats: row, activity: row.activity as Activity, activityUntil: row.activityUntil },
-    new Date(),
+    now,
   );
-  const lastActor = row.lastActorSessionId
-    ? handle.select({ label: sessions.label }).from(sessions).where(eq(sessions.id, row.lastActorSessionId)).get()
+  if (resolved.activity === row.activity) return row; // nothing changed, nothing to persist
+  handle
+    .update(creature)
+    .set({ activity: resolved.activity, activityUntil: resolved.activityUntil })
+    .where(eq(creature.id, CREATURE_ID))
+    .run();
+  return { ...row, activity: resolved.activity, activityUntil: resolved.activityUntil };
+}
+
+function toState(handle: Handle, row: Creature): CreatureState {
+  const resolvedRow = resolveAndSync(handle, row, new Date());
+  const lastActor = resolvedRow.lastActorSessionId
+    ? handle
+        .select({ label: sessions.label })
+        .from(sessions)
+        .where(eq(sessions.id, resolvedRow.lastActorSessionId))
+        .get()
     : undefined;
   return {
-    stats: row,
-    health: deriveHealth(row),
-    activity: resolved.activity,
-    activityUntil: resolved.activityUntil,
-    lastAction: row.lastAction,
+    stats: resolvedRow,
+    health: deriveHealth(resolvedRow),
+    activity: resolvedRow.activity as Activity,
+    activityUntil: resolvedRow.activityUntil,
+    lastAction: resolvedRow.lastAction,
     lastActorLabel: lastActor?.label ?? null,
-    updatedAt: row.updatedAt,
+    updatedAt: resolvedRow.updatedAt,
     history: listRecentCareHistory(handle, CARE_HISTORY_DISPLAY),
   };
 }
@@ -169,20 +204,26 @@ function pruneCareHistory(handle: Handle): void {
 export type ActionRejection = { reason: string };
 
 // Applies one action inside a single synchronous transaction: read the
-// current row, resolve any expired sleep, validate, compute the new state,
-// write it back, record who did it — all without an `await` anywhere in
-// between, which is what makes two concurrent requests resolve
+// current row, resolve any expired sleep (via the same resolveAndSync the
+// read path uses — see its comment above), validate, compute the new
+// state, write it back, record who did it — all without an `await`
+// anywhere in between, which is what makes two concurrent requests resolve
 // deterministically in arrival order rather than racing each other (see
-// PROCESS.md, Decision 4). A rejected action touches nothing: no stats
-// change, no care_events row, no last-actor update.
+// PROCESS.md, Decision 4). A rejected action changes none of ITS OWN
+// effects: no stats change, no care_events row, no last-actor update — the
+// one exception is resolveAndSync's own housekeeping write, which happens
+// regardless of this action's outcome because it isn't this action's
+// effect at all.
 export function performAction(action: ActionName, sessionId: string): CreatureState | ActionRejection {
   const result = db.transaction((tx) => {
     const row = readRow(tx);
     const now = new Date();
-    const resolved = resolveActivity(
-      { stats: row, activity: row.activity as Activity, activityUntil: row.activityUntil },
-      now,
-    );
+    const resolvedRow = resolveAndSync(tx, row, now);
+    const resolved = {
+      stats: resolvedRow as Stats,
+      activity: resolvedRow.activity as Activity,
+      activityUntil: resolvedRow.activityUntil,
+    };
     const outcome = applyAction(action, resolved, now);
     if (!outcome.ok) return { reason: outcome.reason };
 

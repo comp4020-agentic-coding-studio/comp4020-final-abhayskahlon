@@ -1,0 +1,308 @@
+---
+// Milo's visual identity — a single inline SVG creature, no external asset
+// files (none exist in this repo; see PROCESS.md/CLAUDE.md, "Milo" is a
+// fixed literal, not a naming feature, and this component never invents a
+// mechanic — every visual choice below is read straight off `state` fields
+// that already exist and are already displayed as text elsewhere on this
+// page).
+//
+// Rendered entirely server-side: which eyes/mouth/accessory to draw is a
+// plain conditional picked from props, with no client script at all. That
+// means this component gets a free, correct re-render every time the page
+// is: this is deliberate — it is meant to live inside `#live-state` so the
+// existing refreshLiveState()/SSE-driven swap (src/pages/index.astro)
+// updates Milo's expression exactly the same way it already updates the
+// stat bars and history, with nothing new to wire up.
+import type { ActionName } from "../lib/creature";
+import ActionIcon from "./ActionIcon.astro";
+
+interface Props {
+  activity: "idle" | "sleeping";
+  health: number;
+  lastAction: string | null;
+}
+
+const { activity, health, lastAction } = Astro.props;
+
+const sleeping = activity === "sleeping";
+
+// Three expression buckets from the one number already shown as "Overall
+// condition" elsewhere on the page — nothing new is stored or asserted,
+// this only decides which of three pre-drawn expressions to render.
+type Mood = "content" | "neutral" | "tired";
+const mood: Mood = health >= 70 ? "content" : health >= 35 ? "neutral" : "tired";
+
+// The small corner accessory echoes whatever the activity badge's text
+// already names (see index.astro's ACTIVITY_DOING) — same underlying
+// field, read once here instead of re-derived. Never shown while asleep
+// (the sleeping treatment below already owns the whole expression), and
+// "sleep" itself has no idle accessory since it isn't an idle action.
+const accessoryAction = !sleeping && lastAction && lastAction !== "sleep" ? lastAction : null;
+---
+
+<div class={`milo-visual milo-${mood}`} data-sleeping={sleeping ? "true" : "false"}>
+  <svg viewBox="0 0 160 160" class="milo-svg" role="img" aria-label={sleeping ? "Milo, asleep" : `Milo, looking ${mood}`}>
+    <!-- stubby feet, drawn first so the body overlaps their tops -->
+    <ellipse class="milo-foot" cx="58" cy="144" rx="11" ry="6" />
+    <ellipse class="milo-foot" cx="102" cy="144" rx="11" ry="6" />
+
+    <!-- tail, peeking from behind the body -->
+    <path class="milo-tail" d="M126 108c17-3 22 13 10 19-8 4-15-2-13-11 1-4 1-6 3-8z" />
+
+    <!-- ears: deliberately asymmetric — one larger and rounded, one
+         smaller and pointed, so the silhouette alone (no face at all)
+         still reads as Milo rather than a generic rounded pet icon -->
+    <ellipse class="milo-body-fill" cx="46" cy="30" rx="15" ry="21" transform="rotate(-18 46 30)" />
+    <path class="milo-body-fill" d="M106 19c11-6 23 3 18 16-3 9-14 14-21 9-7-6-6-20 3-25z" />
+
+    <!-- body -->
+    <path
+      class="milo-body-fill"
+      d="M80 18c31 0 52 24 54 57 2 27-10 55-37 63-11 3-23 3-34 0-27-8-39-36-37-63 2-33 23-57 54-57z"
+    />
+
+    <!-- belly marking: one consistent detail across every state -->
+    <ellipse class="milo-belly" cx="80" cy="102" rx="26" ry="29" />
+
+    <!-- cheeks -->
+    <ellipse class="milo-cheek" cx="54" cy="90" rx="8" ry="5" />
+    <ellipse class="milo-cheek" cx="106" cy="90" rx="8" ry="5" />
+
+    {
+      sleeping ? (
+        <g class="milo-face milo-face-sleeping">
+          <path class="milo-eye-line" d="M48 74c5-5 13-5 18 0" />
+          <path class="milo-eye-line" d="M94 74c5-5 13-5 18 0" />
+          <path class="milo-mouth" d="M72 96c5 4 11 4 16 0" />
+          <g class="milo-zzz" aria-hidden="true">
+            <text x="112" y="46" class="milo-zzz-char milo-zzz-1">z</text>
+            <text x="124" y="34" class="milo-zzz-char milo-zzz-2">z</text>
+            <text x="136" y="23" class="milo-zzz-char milo-zzz-3">z</text>
+          </g>
+        </g>
+      ) : mood === "content" ? (
+        <g class="milo-face">
+          <ellipse class="milo-eye" cx="56" cy="76" rx="10" ry="11" />
+          <ellipse class="milo-eye" cx="103" cy="76" rx="8.5" ry="9.5" />
+          <circle class="milo-eye-highlight" cx="59.5" cy="71.5" r="2.6" />
+          <circle class="milo-eye-highlight" cx="105.5" cy="72" r="2.2" />
+          <path class="milo-mouth" d="M64 97c7 8 25 8 32 0" />
+        </g>
+      ) : mood === "neutral" ? (
+        <g class="milo-face">
+          <ellipse class="milo-eye" cx="56" cy="77" rx="9" ry="9.5" />
+          <ellipse class="milo-eye" cx="103" cy="77" rx="7.5" ry="8.3" />
+          <circle class="milo-eye-highlight" cx="59" cy="73.5" r="2.2" />
+          <circle class="milo-eye-highlight" cx="105" cy="74" r="1.9" />
+          <path class="milo-mouth" d="M68 98c4 2 20 2 24 0" />
+        </g>
+      ) : (
+        <g class="milo-face">
+          <path class="milo-eye-lid" d="M47 72c4-3 14-3 18 0l-1 6c-4 2-12 2-16 0z" />
+          <path class="milo-eye-lid" d="M95 72c4-3 13-3 17 0l-1 6c-4 2-11 2-15 0z" />
+          <path class="milo-mouth" d="M70 100c6-3 18-3 20 1" />
+        </g>
+      )
+    }
+  </svg>
+
+  {
+    accessoryAction && (
+      <span class="milo-accessory" aria-hidden="true">
+        <ActionIcon action={accessoryAction as ActionName} />
+      </span>
+    )
+  }
+</div>
+
+<style>
+  .milo-visual {
+    position: relative;
+    display: inline-block;
+    width: clamp(7rem, 22vw, 9.5rem);
+    margin: 0 auto;
+  }
+
+  .milo-svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+  }
+
+  .milo-body-fill {
+    fill: var(--milo-body, #ffb38a);
+    stroke: var(--milo-outline, #5a3b2c);
+    stroke-width: 3;
+    stroke-linejoin: round;
+  }
+
+  .milo-foot {
+    fill: var(--milo-body, #ffb38a);
+    stroke: var(--milo-outline, #5a3b2c);
+    stroke-width: 3;
+  }
+
+  .milo-tail {
+    fill: var(--milo-body, #ffb38a);
+    stroke: var(--milo-outline, #5a3b2c);
+    stroke-width: 3;
+    stroke-linejoin: round;
+  }
+
+  .milo-belly {
+    fill: var(--milo-belly, #ffd9b8);
+    stroke: none;
+  }
+
+  .milo-cheek {
+    fill: #ff8fa3;
+    opacity: 0.45;
+  }
+
+  .milo-eye,
+  .milo-eye-lid {
+    fill: var(--milo-outline, #3a2a20);
+  }
+
+  .milo-eye-line {
+    fill: none;
+    stroke: var(--milo-outline, #3a2a20);
+    stroke-width: 3;
+    stroke-linecap: round;
+  }
+
+  .milo-eye-highlight {
+    fill: #fff;
+  }
+
+  .milo-mouth {
+    fill: none;
+    stroke: var(--milo-outline, #3a2a20);
+    stroke-width: 3;
+    stroke-linecap: round;
+  }
+
+  /* Mood only ever recolours the body/belly; the face shapes above already
+     carry the expression, so this is the one place that changes. */
+  .milo-content {
+    --milo-body: #ffb38a;
+    --milo-belly: #ffd9b8;
+  }
+
+  .milo-neutral {
+    --milo-body: #f2c9a0;
+    --milo-belly: #f7e2c4;
+  }
+
+  .milo-tired {
+    --milo-body: #d9c3ae;
+    --milo-belly: #e8dac8;
+  }
+
+  .milo-visual[data-sleeping="true"] {
+    --milo-body: #cdd6e0;
+    --milo-belly: #e3e9ef;
+  }
+
+  .milo-zzz-char {
+    font: 700 1rem/1 ui-rounded, system-ui, sans-serif;
+    fill: var(--color-muted);
+  }
+
+  .milo-accessory {
+    position: absolute;
+    top: -0.3rem;
+    right: -0.3rem;
+    width: 1.9rem;
+    height: 1.9rem;
+    display: grid;
+    place-items: center;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-pill, 999px);
+    box-shadow: var(--shadow);
+    color: var(--color-accent-ink, var(--color-accent));
+  }
+
+  .milo-accessory :global(svg) {
+    width: 1.05rem;
+    height: 1.05rem;
+  }
+
+  /* Idle breathing loop — a very small, slow scale, never on the whole
+     card (which would also move the accessory badge), only the creature
+     artwork itself. */
+  .milo-visual:not([data-sleeping="true"]) .milo-svg {
+    animation: milo-breathe 3.6s ease-in-out infinite;
+    transform-origin: 50% 85%;
+  }
+
+  .milo-visual[data-sleeping="true"] .milo-svg {
+    animation: milo-breathe-slow 4.8s ease-in-out infinite;
+    transform-origin: 50% 85%;
+  }
+
+  /* A gentle pop on mount. Because this whole component is re-rendered
+     fresh by refreshLiveState()'s #live-state swap on every action and
+     every SSE update, this animation re-triggers naturally — a true "this
+     is the real, just-fetched state" cue, never a fake or pre-emptive one. */
+  .milo-visual {
+    animation: milo-pop 320ms ease-out;
+  }
+
+  @keyframes milo-pop {
+    from {
+      transform: scale(0.92);
+      opacity: 0;
+    }
+    to {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  @keyframes milo-breathe {
+    0%,
+    100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.025);
+    }
+  }
+
+  @keyframes milo-breathe-slow {
+    0%,
+    100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.015);
+    }
+  }
+
+  .milo-zzz-1 {
+    animation: milo-zzz-float 2.4s ease-in 0s infinite;
+  }
+  .milo-zzz-2 {
+    animation: milo-zzz-float 2.4s ease-in 0.5s infinite;
+  }
+  .milo-zzz-3 {
+    animation: milo-zzz-float 2.4s ease-in 1s infinite;
+  }
+
+  @keyframes milo-zzz-float {
+    0% {
+      opacity: 0;
+      transform: translate(0, 0);
+    }
+    15% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+      transform: translate(6px, -16px);
+    }
+  }
+</style>

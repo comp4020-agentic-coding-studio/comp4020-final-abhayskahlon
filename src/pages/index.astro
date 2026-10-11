@@ -1,5 +1,7 @@
 ---
-import { ACTIONS } from "../lib/creature";
+import ActionIcon from "../components/ActionIcon.astro";
+import Milo from "../components/Milo.astro";
+import { ACTIONS, type ActionName } from "../lib/creature";
 import { getCreatureState } from "../lib/db";
 import { getOrCreateSession } from "../lib/session";
 import "../styles.css";
@@ -74,17 +76,20 @@ const activityPhrase =
         </nav>
       </div>
     </header>
-    <main>
+    <main class="app-main">
       <h1>COMMONS</h1>
-      <p>
+      <p class="intro">
         Everyone here is looking after {CREATURE_NAME} — one shared creature,
         not your own pet.
       </p>
       <p class="live-indicator" id="live-indicator">connecting…</p>
 
       <div id="live-state">
-        <section class="panel" aria-labelledby="creature-heading">
+        <section class="panel creature-panel" aria-labelledby="creature-heading">
           <h2 id="creature-heading">{CREATURE_NAME}</h2>
+
+          <Milo activity={state.activity} health={state.health} lastAction={state.lastAction} />
+
           <span
             class={`activity-badge ${state.activity}`}
             id="activity-badge"
@@ -95,7 +100,7 @@ const activityPhrase =
 
           {
             (Object.keys(STAT_LABELS) as (keyof typeof STAT_LABELS)[]).map((key) => (
-              <div class="stat-row">
+              <div class="stat-row" data-stat={key}>
                 <span>{STAT_LABELS[key]}</span>
                 <span class="stat-bar">
                   <span class="stat-bar-fill" style={`width: ${state.stats[key]}%`} />
@@ -125,7 +130,7 @@ const activityPhrase =
           }
         </section>
 
-        <section class="panel" aria-labelledby="history-heading">
+        <section class="panel history-panel" aria-labelledby="history-heading">
           <h2 id="history-heading">Recent care</h2>
           <p class="panel-note">
             Everyone who's cared for {CREATURE_NAME} recently — not a leaderboard, just what happened and who was
@@ -136,8 +141,11 @@ const activityPhrase =
             {
               state.history.map((entry) => (
                 <li>
-                  <strong>{entry.actorLabel}</strong> {ACTION_PAST_TENSE[entry.action] ?? entry.action} {CREATURE_NAME} (
-                  {entry.summary}) — {entry.createdAt}
+                  <ActionIcon action={entry.action as ActionName} class="history-icon" />
+                  <span>
+                    <strong>{entry.actorLabel}</strong> {ACTION_PAST_TENSE[entry.action] ?? entry.action} {CREATURE_NAME}{" "}
+                    ({entry.summary}) — {entry.createdAt}
+                  </span>
                 </li>
               ))
             }
@@ -145,19 +153,22 @@ const activityPhrase =
         </section>
       </div>
 
-      <section class="panel" aria-labelledby="actions-heading">
+      <section class="panel actions-panel" aria-labelledby="actions-heading">
         <h2 id="actions-heading">Care for {CREATURE_NAME}</h2>
         <div class="actions">
           {
             ACTIONS.map((action) => (
               <form method="post" action="/api/actions" class="action-form">
                 <input type="hidden" name="action" value={action} />
-                <button>{ACTION_LABELS[action] ?? action}</button>
+                <button>
+                  <ActionIcon action={action} />
+                  {ACTION_LABELS[action] ?? action}
+                </button>
               </form>
             ))
           }
         </div>
-        <p class="action-error" id="action-error" hidden></p>
+        <p class="action-error" id="action-error" role="alert" aria-live="polite" hidden></p>
       </section>
     </main>
 

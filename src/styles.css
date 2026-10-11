@@ -1,14 +1,53 @@
+/* COMMONS — playful/expressive visual direction.
+   Shared by src/pages/index.astro AND src/pages/readme.astro (the About
+   page renders raw compiled Markdown with no classes of its own — the
+   `main :where(...)` typographic rules below are what give it the same
+   type hierarchy, with zero changes needed to that file). */
+
 :root {
-  --color-bg: #f4f6f9;
+  /* warm, cream-based surface palette rather than clinical blue-on-white */
+  --color-bg: #fbf4e8;
   --color-surface: #ffffff;
-  --color-border: #d8e0e9;
-  --color-text: #1a1a1a;
-  --color-muted: #5b6674;
-  --color-accent: #0b5fff;
-  --color-good: #1e7a34;
-  --color-warn: #b3261e;
-  --radius: 0.6rem;
-  --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
+  --color-surface-alt: #fff8ee;
+  --color-border: #e8dcc8;
+  --color-text: #2b2420;
+  --color-muted: #7a6f60;
+
+  /* primary accent: coral/terracotta */
+  --color-accent: #ff8a5b;
+  --color-accent-ink: #b84b22;
+
+  /* status, kept visually distinct from the accent */
+  --color-good: #3f8f5f;
+  --color-warn: #c7453a;
+  --color-warn-bg: #fbe9e6;
+
+  /* one hue per stat, so the four bars are scannable without reading labels */
+  --stat-hunger: #e2982a;
+  --stat-energy: #3d8ab8;
+  --stat-happiness: #e0588b;
+  --stat-cleanliness: #2fa88c;
+
+  /* Milo's own palette lives in Milo.astro (mood-scoped custom properties);
+     these are the site chrome around her. */
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-8: 3rem;
+
+  --radius-sm: 0.5rem;
+  --radius-md: 0.9rem;
+  --radius-lg: 1.5rem;
+  --radius-pill: 999px;
+
+  --shadow: 0 1px 2px rgba(43, 36, 32, 0.06), 0 8px 24px rgba(43, 36, 32, 0.07);
+
+  --font-display: ui-rounded, "SF Pro Rounded", "Segoe UI Rounded", "Hiragino Maru Gothic ProN", system-ui, sans-serif;
+  --font-body: system-ui, sans-serif;
 }
 
 * {
@@ -19,56 +58,187 @@ body {
   margin: 0;
   background: var(--color-bg);
   color: var(--color-text);
-  font-family: system-ui, sans-serif;
+  font-family: var(--font-body);
   line-height: 1.6;
 }
 
 a {
-  color: var(--color-accent);
+  color: var(--color-accent-ink);
 }
 
 a:focus-visible,
-button:focus-visible {
-  outline: 2px solid var(--color-accent);
+button:focus-visible,
+.action-form button:focus-visible {
+  outline: 2px solid var(--color-accent-ink);
   outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
 
+/* ---------- header ---------- */
+
 .site-header {
-  background: #0a2240;
+  background: #2b2420;
   color: #fff;
-  padding: 0.75rem 1.25rem;
+  padding: var(--space-3) var(--space-5);
 }
 
 .site-header a {
   color: #fff;
   text-decoration: none;
-  font-weight: 600;
+  font-weight: 700;
+  font-family: var(--font-display);
+  letter-spacing: 0.01em;
 }
 
 .site-header nav {
   display: inline-flex;
-  gap: 1rem;
-  margin-left: 1.5rem;
+  gap: var(--space-4);
+  margin-left: var(--space-5);
 }
 
 .site-header nav a {
   font-weight: 400;
-  opacity: 0.85;
+  font-family: var(--font-body);
+  opacity: 0.8;
 }
 
-main {
-  max-width: 40rem;
-  margin: 0 auto;
-  padding: 1.5rem 1.25rem 3rem;
+.site-header nav a:hover {
+  opacity: 1;
 }
+
+/* ---------- page shell ---------- */
+
+main {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-4) var(--space-8);
+}
+
+main h1 {
+  font-family: var(--font-display);
+  font-size: clamp(1.75rem, 1.4rem + 1.2vw, 2.25rem);
+  margin: 0 0 var(--space-2);
+}
+
+.intro {
+  color: var(--color-muted);
+  margin: 0 0 var(--space-4);
+}
+
+/* Shared typographic hierarchy for both this page's content AND
+   readme.astro's raw compiled Markdown (that page has no classes of its
+   own to hang styling off, only these generic selectors). */
+main :where(h2) {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  margin: 0 0 var(--space-2);
+}
+
+main :where(h3) {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+}
+
+main :where(p, li) {
+  color: inherit;
+}
+
+main :where(blockquote) {
+  margin: var(--space-4) 0;
+  padding: var(--space-2) var(--space-4);
+  border-left: 3px solid var(--color-accent);
+  background: var(--color-surface-alt);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  color: var(--color-muted);
+}
+
+main :where(code) {
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+  border-radius: 0.3rem;
+  padding: 0.1rem 0.35rem;
+  font-size: 0.9em;
+}
+
+main :where(pre) {
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  overflow-x: auto;
+}
+
+main :where(pre code) {
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+/* ---------- desktop two-column layout ----------
+   Mobile stays the original single-column flow (no media query = no
+   change). At this breakpoint, #live-state's two panels and the actions
+   panel are laid out as "Milo + actions" on the left and "Recent care" on
+   the right. `display: contents` makes #live-state's two children act as
+   direct grid items of .app-main without changing #live-state's identity
+   in the DOM — refreshLiveState()'s getElementById/replaceWith on
+   #live-state is completely unaffected either way. */
+@media (min-width: 46rem) {
+  .app-main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: var(--space-6);
+    align-items: start;
+  }
+
+  /* Every direct grid item gets an explicit row — relying on auto-placement
+     here is what originally pushed the heading/intro/indicator below the
+     panels: with the three panels already occupying rows 1–2 via their own
+     explicit placement, the grid had no free full-width cell left in those
+     rows for an auto-placed item and dropped them into a new row 3. */
+  .app-main > h1 {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  .app-main > .intro {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .app-main > .live-indicator {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+
+  #live-state {
+    display: contents;
+  }
+
+  .creature-panel {
+    grid-column: 1;
+    grid-row: 4;
+  }
+
+  .actions-panel {
+    grid-column: 1;
+    grid-row: 5;
+  }
+
+  .history-panel {
+    grid-column: 2;
+    grid-row: 4 / span 2;
+  }
+}
+
+/* ---------- panels ---------- */
 
 .panel {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
-  padding: 1.25rem;
-  margin-bottom: 1.5rem;
+  padding: var(--space-5);
+  margin-bottom: var(--space-5);
 }
 
 .panel-note {
@@ -76,25 +246,79 @@ main {
   font-size: 0.9rem;
 }
 
+.creature-panel {
+  text-align: center;
+}
+
+.creature-panel h2 {
+  margin-top: 0;
+}
+
+.creature-panel .stat-row,
+.creature-panel .condition,
+.creature-panel .last-action {
+  text-align: left;
+}
+
+/* ---------- Milo's activity badge ---------- */
+
+.activity-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.75rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: var(--color-surface-alt);
+  color: var(--color-muted);
+  margin: var(--space-2) 0 var(--space-4);
+}
+
+.activity-badge.sleeping {
+  background: #eef1f6;
+  color: #556070;
+}
+
+/* ---------- stats ---------- */
+
 .stat-row {
   display: grid;
-  grid-template-columns: 7rem 1fr 3rem;
+  grid-template-columns: 6.5rem 1fr 2.75rem;
   align-items: center;
-  gap: 0.6rem;
-  margin: 0.5rem 0;
+  gap: var(--space-3);
+  margin: var(--space-2) 0;
+  font-size: 0.92rem;
 }
 
 .stat-bar {
-  height: 0.9rem;
+  height: 0.7rem;
   background: var(--color-border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   overflow: hidden;
 }
 
 .stat-bar-fill {
   height: 100%;
   background: var(--color-accent);
-  transition: width 0.3s ease;
+  border-radius: inherit;
+  transition: width 0.4s ease;
+}
+
+.stat-row[data-stat="hunger"] .stat-bar-fill {
+  background: var(--stat-hunger);
+}
+
+.stat-row[data-stat="energy"] .stat-bar-fill {
+  background: var(--stat-energy);
+}
+
+.stat-row[data-stat="happiness"] .stat-bar-fill {
+  background: var(--stat-happiness);
+}
+
+.stat-row[data-stat="cleanliness"] .stat-bar-fill {
+  background: var(--stat-cleanliness);
 }
 
 .stat-value {
@@ -107,34 +331,23 @@ main {
 .condition {
   font-size: 0.9rem;
   color: var(--color-muted);
-  margin-top: 0.5rem;
-}
-
-.activity-badge {
-  display: inline-block;
-  padding: 0.15rem 0.6rem;
-  border-radius: 999px;
-  font-size: 0.8rem;
-  background: var(--color-border);
-}
-
-.activity-badge.sleeping {
-  background: #eef1f5;
-  color: var(--color-muted);
+  margin-top: var(--space-3);
 }
 
 .last-action {
   font-size: 0.95rem;
-  margin-top: 0.75rem;
-  padding-top: 0.75rem;
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
   border-top: 1px dashed var(--color-border);
 }
+
+/* ---------- actions ---------- */
 
 .actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.6rem;
-  margin-top: 1rem;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
 }
 
 .actions form {
@@ -142,49 +355,127 @@ main {
 }
 
 .actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
   font: inherit;
-  padding: 0.5rem 1rem;
-  border-radius: var(--radius);
+  font-weight: 600;
+  min-height: 2.75rem;
+  padding: 0.55rem 1.1rem;
+  border-radius: var(--radius-pill);
   border: 1px solid var(--color-border);
-  background: var(--color-surface);
+  background: var(--color-surface-alt);
+  color: var(--color-text);
   cursor: pointer;
+  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.actions button svg {
+  width: 1.1rem;
+  height: 1.1rem;
+  color: var(--color-accent-ink);
 }
 
 .actions button:hover {
   border-color: var(--color-accent);
+  background: #fff;
+}
+
+.actions button:active {
+  transform: scale(0.96);
 }
 
 .action-error {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
   color: var(--color-warn);
+  background: var(--color-warn-bg);
+  border: 1px solid #f2c9c3;
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
   font-size: 0.9rem;
-  margin-top: 0.5rem;
+  margin-top: var(--space-3);
 }
+
+.action-error[hidden] {
+  display: none;
+}
+
+/* ---------- Recent care history ---------- */
 
 .history-list {
   list-style: none;
-  margin: 0.5rem 0 0;
+  margin: var(--space-2) 0 0;
   padding: 0;
   font-size: 0.9rem;
   color: var(--color-muted);
 }
 
 .history-list li {
-  padding: 0.2rem 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--color-border);
 }
 
+.history-list li:last-child {
+  border-bottom: none;
+}
+
+.history-icon {
+  flex: 0 0 auto;
+  width: 1.2rem;
+  height: 1.2rem;
+  margin-top: 0.1rem;
+  color: var(--color-accent-ink);
+  opacity: 0.8;
+}
+
+/* ---------- live indicator ---------- */
+
 .live-indicator {
+  display: inline-flex;
+  align-items: center;
   font-size: 0.8rem;
   color: var(--color-muted);
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  padding: 0.2rem 0.75rem;
+  margin: 0 0 var(--space-4);
+}
+
+.live-indicator.connected::before,
+.live-indicator.disconnected::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  margin-right: 0.4rem;
 }
 
 .live-indicator.connected::before {
-  content: "●";
-  color: var(--color-good);
-  margin-right: 0.3rem;
+  background: var(--color-good);
 }
 
 .live-indicator.disconnected::before {
-  content: "●";
-  color: var(--color-warn);
-  margin-right: 0.3rem;
+  background: var(--color-warn);
+}
+
+/* ---------- motion ----------
+   One universal override, so every animation added anywhere on the site
+   (including inside Milo.astro's scoped <style>, since !important beats
+   Astro's scoping attribute) is neutralised under a reduced-motion
+   preference, rather than gating each keyframe by hand. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

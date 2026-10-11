@@ -1,0 +1,82 @@
+---
+// One small line-icon per care action, reused in three places: the action
+// buttons, each Recent-care history entry, and (via Milo.astro) a tiny
+// corner accessory echoing the creature's last action. Purely decorative —
+// aria-hidden, since the action's real accessible name is always the
+// visible text label next to or around it, never this icon alone.
+//
+// Same visual language throughout: a single `currentColor` stroke, round
+// caps/joins, a 0 0 24 24 box — so recolouring is just a CSS `color`
+// change at the call site, and no two icons compete stylistically.
+import type { ActionName } from "../lib/creature";
+
+interface Props {
+  action: ActionName;
+  class?: string;
+}
+
+const { action, class: className } = Astro.props;
+---
+
+<svg
+  class={className}
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="1.8"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+  aria-hidden="true"
+  focusable="false"
+>
+  {
+    action === "feed" && (
+      <>
+        {/* a little bowl with something in it */}
+        <path d="M4 12.5a8 8 0 0 0 16 0" />
+        <path d="M3.5 12.5h17" />
+        <path d="M6.5 12.5c0-2.2 0-4 1.2-5.3" />
+        <circle cx="12" cy="9.3" r="1" fill="currentColor" stroke="none" />
+      </>
+    )
+  }
+  {
+    action === "play" && (
+      <>
+        {/* a ball, cross-seam suggesting bounce */}
+        <circle cx="12" cy="12" r="7.5" />
+        <path d="M5.3 9.3c3 1.8 10.4 1.8 13.4 0" />
+        <path d="M12 4.5v15" />
+      </>
+    )
+  }
+  {
+    action === "walk" && (
+      <>
+        {/* a little paw print */}
+        <ellipse cx="12" cy="15.3" rx="4.3" ry="3.4" />
+        <ellipse cx="7" cy="9.3" rx="1.6" ry="2.1" transform="rotate(-18 7 9.3)" />
+        <ellipse cx="11.2" cy="6.6" rx="1.6" ry="2.1" />
+        <ellipse cx="15.5" cy="7.4" rx="1.6" ry="2" transform="rotate(14 15.5 7.4)" />
+      </>
+    )
+  }
+  {
+    action === "clean" && (
+      <>
+        {/* a couple of soap bubbles */}
+        <circle cx="10.5" cy="13" r="5.2" />
+        <circle cx="16.3" cy="8.3" r="2.6" />
+        <path d="M8.8 10.6c.6-.6 1.6-.9 2.4-.5" />
+      </>
+    )
+  }
+  {
+    action === "sleep" && (
+      <>
+        {/* a crescent moon */}
+        <path d="M15.8 4.6a7.6 7.6 0 1 0 3.6 14.3 9 9 0 0 1-3.6-14.3Z" />
+      </>
+    )
+  }
+</svg>

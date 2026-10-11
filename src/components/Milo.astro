@@ -21,51 +21,19 @@
 // group while that attribute is present. See index.astro's script for why
 // that attribute can only ever be set by the tab whose own action actually
 // succeeded.
-import type { Activity, Stats } from "../lib/creature";
+import type { Activity, HatOption, NeckwearOption, Stats } from "../lib/creature";
+import { computeMood } from "./mood";
 
 interface Props {
   activity: Activity;
   stats: Stats;
+  hat?: HatOption | null;
+  neckwear?: NeckwearOption | null;
 }
 
-const { activity, stats } = Astro.props;
+const { activity, stats, hat = null, neckwear = null } = Astro.props;
 const sleeping = activity === "sleeping";
-
-// Presentational-only bands, independent of src/lib/creature.ts's real
-// action-validation thresholds (ENERGY_FOR_PLAY, ENERGY_FOR_WALK,
-// HUNGER_TO_SLEEP) — deliberately not imported, so a tweak to either one
-// never silently changes the other, and this view is never mistaken for
-// the mechanic itself.
-const CONCERN = 35;
-const SEVERE = 15;
-const EXCITED = 85;
-
-type Family = "sleeping" | "happy" | "excited" | "sleepy" | "hungry" | "sad" | "messy";
-
-function computeFace(): { family: Family; severe: boolean } {
-  if (sleeping) return { family: "sleeping", severe: false };
-
-  // Whichever real stat is lowest drives the expression — not a fixed
-  // weighting, so "more pronounced as it falls" holds for every family.
-  // The listed order only breaks an exact tie.
-  const candidates: { key: keyof Stats; family: Family }[] = [
-    { key: "energy", family: "sleepy" },
-    { key: "hunger", family: "hungry" },
-    { key: "happiness", family: "sad" },
-    { key: "cleanliness", family: "messy" },
-  ];
-  let worst = candidates[0];
-  for (const c of candidates) {
-    if (stats[c.key] < stats[worst.key]) worst = c;
-  }
-  if (stats[worst.key] < CONCERN) {
-    return { family: worst.family, severe: stats[worst.key] < SEVERE };
-  }
-  if (stats.happiness >= EXCITED) return { family: "excited", severe: false };
-  return { family: "happy", severe: false };
-}
-
-const { family, severe } = computeFace();
+const { family, severe } = computeMood(stats, activity);
 
 // A small 4-point sparkle, parametrised so excited's ambient twinkle and
 // the play/clean reaction marks can share one shape definition rather than
@@ -104,6 +72,46 @@ function sparkle(cx: number, cy: number, r: number): string {
     <!-- cheeks -->
     <ellipse class="milo-cheek" cx="54" cy="90" rx="8" ry="5" />
     <ellipse class="milo-cheek" cx="106" cy="90" rx="8" ry="5" />
+
+    <!-- wardrobe: shared, cosmetic, always reflecting the one real stored
+         choice (see src/lib/schema.ts's hat/neckwear columns) — never a
+         per-viewer preference, never a second copy of state. Sits clear of
+         both ears and the face group below. -->
+    {
+      hat === "top-hat" && (
+        <g class="milo-wardrobe milo-hat-top" aria-hidden="true">
+          <path d="M64 23c0-11 7-19 16-19s16 8 16 19z" />
+          <ellipse cx="80" cy="23" rx="20" ry="4" />
+          <rect x="65" y="14" width="30" height="5" />
+        </g>
+      )
+    }
+    {
+      hat === "party-hat" && (
+        <g class="milo-wardrobe milo-hat-party" aria-hidden="true">
+          <path d="M80 3 L65 26 L95 26 Z" />
+          <path d="M80 3 L75 14 L85 14 Z" class="milo-hat-party-stripe" />
+          <circle cx="80" cy="3" r="3" class="milo-hat-party-pom" />
+        </g>
+      )
+    }
+    {
+      neckwear === "bow-tie" && (
+        <g class="milo-wardrobe milo-bow-tie" aria-hidden="true">
+          <path d="M80 108 L68 102 L68 114 Z" />
+          <path d="M80 108 L92 102 L92 114 Z" />
+          <circle cx="80" cy="108" r="3.2" class="milo-bow-knot" />
+        </g>
+      )
+    }
+    {
+      neckwear === "scarf" && (
+        <g class="milo-wardrobe milo-scarf" aria-hidden="true">
+          <path d="M57 106c6 8 40 8 46 0l-2 9c-11 5-31 5-42 0z" />
+          <path d="M90 112l8 16-10 1-5-15z" class="milo-scarf-tail" />
+        </g>
+      )
+    }
 
     {
       sleeping ? (
@@ -226,6 +234,11 @@ function sparkle(cx: number, cy: number, r: number): string {
       <circle class="milo-bubble" cx="119" cy="94" r="2.4" />
       <path d={sparkle(80, 54, 5)} />
     </g>
+    <g class="milo-reaction milo-reaction-adventure" aria-hidden="true">
+      <ellipse class="milo-mud" cx="58" cy="118" rx="6" ry="3.5" transform="rotate(-10 58 118)" />
+      <ellipse class="milo-mud" cx="100" cy="124" rx="5" ry="3" transform="rotate(8 100 124)" />
+      <ellipse class="milo-mud" cx="78" cy="132" rx="4" ry="2.4" />
+    </g>
   </svg>
 </div>
 
@@ -314,6 +327,43 @@ function sparkle(cx: number, cy: number, r: number): string {
   .milo-mouth-open {
     fill: var(--milo-outline, #3a2a20);
     opacity: 0.85;
+  }
+
+  /* ---------- wardrobe: shared, cosmetic, never a per-viewer preference ---------- */
+  .milo-wardrobe {
+    stroke: var(--milo-outline, #3a2a20);
+    stroke-width: 1.6;
+    stroke-linejoin: round;
+  }
+
+  .milo-hat-top {
+    fill: #2b2420;
+  }
+
+  .milo-hat-party {
+    fill: #ff8a5b;
+  }
+
+  .milo-hat-party-stripe {
+    fill: #fff6d8;
+  }
+
+  .milo-hat-party-pom {
+    fill: #ffcf6b;
+  }
+
+  .milo-bow-tie {
+    fill: #c7453a;
+  }
+
+  .milo-bow-knot {
+    fill: #9c342b;
+    stroke: none;
+  }
+
+  .milo-scarf,
+  .milo-scarf-tail {
+    fill: #3f8f5f;
   }
 
   /* ---------- mood tints: the one place body colour changes ---------- */
@@ -410,10 +460,16 @@ function sparkle(cx: number, cy: number, r: number): string {
     fill: #fff6d8;
   }
 
+  .milo-reaction-adventure .milo-mud {
+    fill: #8a6a49;
+    opacity: 0.75;
+  }
+
   .milo-visual[data-reaction="feed"] .milo-reaction-feed,
   .milo-visual[data-reaction="play"] .milo-reaction-play,
   .milo-visual[data-reaction="walk"] .milo-reaction-walk,
-  .milo-visual[data-reaction="clean"] .milo-reaction-clean {
+  .milo-visual[data-reaction="clean"] .milo-reaction-clean,
+  .milo-visual[data-reaction="adventure"] .milo-reaction-adventure {
     animation: milo-reaction-mark 1.4s ease-out;
   }
 

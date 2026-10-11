@@ -187,6 +187,10 @@ main :where(pre code) {
    in the DOM — refreshLiveState()'s getElementById/replaceWith on
    #live-state is completely unaffected either way. */
 @media (min-width: 46rem) {
+  main {
+    max-width: 58rem;
+  }
+
   .app-main {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -228,9 +232,51 @@ main :where(pre code) {
     grid-row: 5;
   }
 
+  .activities-panel {
+    grid-column: 1;
+    grid-row: 6;
+  }
+
   .history-panel {
     grid-column: 2;
-    grid-row: 4 / span 2;
+    grid-row: 4 / span 3;
+  }
+}
+
+/* ---------- wide desktop: three columns ----------
+   Milo+stats | care actions + shared activities | Recent care — each of
+   the five named zones gets its own slot instead of two sharing one
+   column. Only grid-template-columns/each panel's grid-column change here;
+   #live-state stays `display: contents` from the breakpoint above, so
+   refreshLiveState()'s swap target is identical at every width. */
+@media (min-width: 72rem) {
+  main {
+    max-width: 78rem;
+  }
+
+  .app-main {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: var(--space-6);
+  }
+
+  .creature-panel {
+    grid-column: 1;
+    grid-row: 4 / span 3;
+  }
+
+  .actions-panel {
+    grid-column: 2;
+    grid-row: 4;
+  }
+
+  .activities-panel {
+    grid-column: 2;
+    grid-row: 5;
+  }
+
+  .history-panel {
+    grid-column: 3;
+    grid-row: 4 / span 3;
   }
 }
 
@@ -262,6 +308,34 @@ main :where(pre code) {
 .creature-panel .condition,
 .creature-panel .last-action {
   text-align: left;
+}
+
+/* ---------- age and dialogue ---------- */
+
+.milo-age {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--color-muted);
+}
+
+.milo-milestone {
+  display: inline-block;
+  margin: 0 0 var(--space-2);
+  padding: 0.15rem 0.6rem;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-alt);
+  color: var(--color-accent-ink);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.milo-dialogue {
+  margin: var(--space-2) 0 0;
+  font-style: italic;
+  color: var(--color-muted);
+  font-size: 0.92rem;
 }
 
 /* ---------- Milo's activity badge ---------- */
@@ -455,6 +529,103 @@ main :where(pre code) {
 
 .action-error[hidden] {
   display: none;
+}
+
+/* ---------- shared activities: wardrobe + adventure ---------- */
+
+.wardrobe-slot-label {
+  margin: var(--space-3) 0 var(--space-1);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.wardrobe-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.wardrobe-options form {
+  margin: 0;
+}
+
+.wardrobe-option {
+  font: inherit;
+  font-size: 0.85rem;
+  min-height: 2.5rem;
+  padding: 0.45rem 0.9rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.wardrobe-option:hover {
+  border-color: var(--color-accent);
+}
+
+.wardrobe-option.selected {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.adventure-form {
+  margin-top: var(--space-4);
+}
+
+.adventure-form button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font: inherit;
+  font-weight: 600;
+  min-height: 2.75rem;
+  padding: 0.55rem 1.1rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+  cursor: pointer;
+  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.adventure-form button svg {
+  width: 1.1rem;
+  height: 1.1rem;
+  color: var(--color-accent-ink);
+}
+
+.adventure-form button:hover {
+  border-color: var(--color-accent);
+  background: #fff;
+}
+
+.adventure-form button:active {
+  transform: scale(0.96);
+}
+
+.adventure-form button[data-loading] {
+  opacity: 0.6;
+  cursor: progress;
+  pointer-events: none;
+}
+
+.adventure-form button[data-loading]::after {
+  content: "";
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  opacity: 0.7;
+  animation: button-spin 700ms linear infinite;
 }
 
 /* ---------- Recent care history ---------- */

@@ -1,9 +1,11 @@
 ---
 import ActionIcon from "../components/ActionIcon.astro";
+import { formatMiloAge } from "../components/age";
+import { pickDialogue } from "../components/dialogue";
 import Milo from "../components/Milo.astro";
 import StatIcon from "../components/StatIcon.astro";
-import { ACTIONS, type ActionName } from "../lib/creature";
-import { getCreatureState } from "../lib/db";
+import { ACTIONS, type ActionName, WARDROBE_HATS, WARDROBE_LABELS, WARDROBE_NECKWEAR } from "../lib/creature";
+import { getCreatureState, getMiloAge } from "../lib/db";
 import { getOrCreateSession } from "../lib/session";
 import "../styles.css";
 
@@ -12,6 +14,8 @@ import "../styles.css";
 getOrCreateSession(Astro.cookies);
 
 const state = getCreatureState();
+const age = formatMiloAge(getMiloAge());
+const dialogue = pickDialogue(state.stats, state.activity, state.history[0]?.createdAt ?? null);
 
 // A single, fixed name — not a naming feature. There is nowhere in this
 // app a visitor can set or change it; it's a literal here and in the
@@ -31,6 +35,8 @@ const ACTION_LABELS: Record<string, string> = {
   walk: "Walk",
   clean: "Clean",
   sleep: "Sleep",
+  wardrobe: "Wardrobe",
+  adventure: "Adventure",
 };
 
 const ACTION_PAST_TENSE: Record<string, string> = {
@@ -39,6 +45,8 @@ const ACTION_PAST_TENSE: Record<string, string> = {
   walk: "walked",
   clean: "cleaned",
   sleep: "put to sleep",
+  wardrobe: "dressed",
+  adventure: "adventured with",
 };
 
 // Minimal "something just happened" feedback — never its own state, always
@@ -53,6 +61,8 @@ const ACTIVITY_DOING: Partial<Record<string, string>> = {
   play: `${CREATURE_NAME} is playing`,
   walk: `${CREATURE_NAME} is out for a walk`,
   clean: `${CREATURE_NAME} is being cleaned`,
+  wardrobe: `${CREATURE_NAME} is looking sharp`,
+  adventure: `${CREATURE_NAME} just got back from an adventure`,
 };
 
 const activityPhrase =
@@ -87,9 +97,15 @@ const activityPhrase =
 
       <div id="live-state">
         <section class="panel creature-panel" aria-labelledby="creature-heading">
-          <h2 id="creature-heading">{CREATURE_NAME}</h2>
+          <h2 id="creature-heading">
+            {CREATURE_NAME}
+            <span class="milo-age" title={age.milestone ?? undefined}>{age.text}</span>
+          </h2>
+          {age.milestone && <p class="milo-milestone">{age.milestone}</p>}
 
-          <Milo activity={state.activity} stats={state.stats} />
+          <Milo activity={state.activity} stats={state.stats} hat={state.hat} neckwear={state.neckwear} />
+
+          <p class="milo-dialogue">"{dialogue}"</p>
 
           <span
             class={`activity-badge ${state.activity}`}
@@ -155,8 +171,95 @@ const activityPhrase =
             }
           </ul>
         </section>
+
+        <!-- Inside #live-state deliberately, unlike actions-panel below:
+             the wardrobe forms' hidden inputs encode the OTHER slot's
+             current value (so a hat choice doesn't clobber an
+             already-chosen scarf) and the "selected" highlighting reflects
+             who most recently changed it — both need a value newer than
+             this page's first load, which only the refreshLiveState() swap
+             provides. The script's submit handler is a single delegated
+             listener on `document` (see below) specifically so it keeps
+             working for forms in here across that swap. -->
+        <section class="panel activities-panel" aria-labelledby="activities-heading">
+          <h2 id="activities-heading">Shared activities</h2>
+          <p class="panel-note">
+            A shared look, and a shared adventure — free, cosmetic, nobody's score. Changes here are visible to
+            everyone, the same as everything else {CREATURE_NAME} does.
+          </p>
+
+          {/* Each form carries exactly ONE slot + ONE value, never the
+              other slot's current value — the server reads that fresh
+              inside its own transaction (src/lib/db.ts's
+              performWardrobeChange) precisely so a hat choice can never
+              silently revert a scarf someone else just picked, no matter
+              how stale this rendered page is. */}
+          <p class="wardrobe-slot-label">Hat</p>
+          <div class="wardrobe-options" role="group" aria-label="Hat">
+            <form method="post" action="/api/wardrobe" class="activity-form wardrobe-form">
+              <input type="hidden" name="slot" value="hat" />
+              <input type="hidden" name="value" value="" />
+              <button aria-pressed={state.hat === null} class:list={["wardrobe-option", { selected: state.hat === null }]}>
+                None
+              </button>
+            </form>
+            {
+              WARDROBE_HATS.map((option) => (
+                <form method="post" action="/api/wardrobe" class="activity-form wardrobe-form">
+                  <input type="hidden" name="slot" value="hat" />
+                  <input type="hidden" name="value" value={option} />
+                  <button aria-pressed={state.hat === option} class:list={["wardrobe-option", { selected: state.hat === option }]}>
+                    {WARDROBE_LABELS[option]}
+                  </button>
+                </form>
+              ))
+            }
+          </div>
+
+          <p class="wardrobe-slot-label">Neckwear</p>
+          <div class="wardrobe-options" role="group" aria-label="Neckwear">
+            <form method="post" action="/api/wardrobe" class="activity-form wardrobe-form">
+              <input type="hidden" name="slot" value="neckwear" />
+              <input type="hidden" name="value" value="" />
+              <button aria-pressed={state.neckwear === null} class:list={["wardrobe-option", { selected: state.neckwear === null }]}>
+                None
+              </button>
+            </form>
+            {
+              WARDROBE_NECKWEAR.map((option) => (
+                <form method="post" action="/api/wardrobe" class="activity-form wardrobe-form">
+                  <input type="hidden" name="slot" value="neckwear" />
+                  <input type="hidden" name="value" value={option} />
+                  <button
+                    aria-pressed={state.neckwear === option}
+                    class:list={["wardrobe-option", { selected: state.neckwear === option }]}
+                  >
+                    {WARDROBE_LABELS[option]}
+                  </button>
+                </form>
+              ))
+            }
+          </div>
+
+          <form method="post" action="/api/adventure" class="activity-form adventure-form">
+            {/* Not read by /api/adventure.ts (that route takes no action name
+                at all — there's only one adventure to validate) — this exists
+                purely so the client's generic playReaction(actionName) call
+                picks "adventure" and reveals Milo.astro's mud-splat reaction
+                group, the same mechanism every care action already uses. */}
+            <input type="hidden" name="action" value="adventure" />
+            <button>
+              <ActionIcon action="adventure" />
+              Send {CREATURE_NAME} on an adventure
+            </button>
+          </form>
+        </section>
       </div>
 
+      <!-- Outside #live-state, unlike activities-panel above: these five
+           forms' hidden "action" values never depend on current creature
+           state, so there's nothing for them to go stale showing — they
+           never need to be part of the live-refreshed region. -->
       <section class="panel actions-panel" aria-labelledby="actions-heading">
         <h2 id="actions-heading">Care for {CREATURE_NAME}</h2>
         <div class="actions">
@@ -219,89 +322,115 @@ const activityPhrase =
         return text.length > 0 ? text : null;
       }
 
-      for (const form of document.querySelectorAll<HTMLFormElement>(".action-form")) {
-        form.addEventListener("submit", async (event) => {
-          event.preventDefault();
-          errorBox?.setAttribute("hidden", "");
+      // Both the five care-action forms AND the shared-activity forms
+      // (wardrobe, adventure) go through this exact same handler — it was
+      // already fully generic (reads form.getAttribute("action"), checks
+      // res.redirected, calls refreshLiveState()), so the new forms need a
+      // second class rather than reusing ".action-form": spec/
+      // action-form-url.test.ts asserts every ".action-form" resolves to
+      // exactly "/api/actions", which a wardrobe/adventure form pointing
+      // elsewhere would break. ".activity-form" gets everything this handler
+      // does, including the same form.getAttribute("action") fix (never
+      // form.action) that test exists to protect, just without that one
+      // test asserting it for these specific forms too.
+      //
+      // One delegated listener on `document`, attached exactly once, rather
+      // than a per-form loop: the wardrobe forms' hidden inputs encode the
+      // OTHER slot's current value (so picking a hat doesn't clobber an
+      // already-chosen scarf), which means they have to live inside
+      // #live-state to ever see a value newer than the page's first load —
+      // and anything inside #live-state gets replaced wholesale by
+      // refreshLiveState(). A per-element loop's listeners would NOT follow
+      // their elements through that replacement (confirmed while verifying
+      // this: picking a hat, then a scarf, silently reverted the hat to
+      // whatever it was on first page load). Delegation sidesteps this
+      // entirely — the listener lives on `document`, which is never
+      // replaced, and `submit` bubbles there from whichever form element is
+      // live in the DOM at the moment of the click, old or newly-swapped.
+      document.addEventListener("submit", async (event) => {
+        const form = event.target;
+        if (!(form instanceof HTMLFormElement) || !form.matches(".action-form, .activity-form")) return;
 
-          const formData = new FormData(form);
-          const actionName = String(formData.get("action") ?? "");
+        event.preventDefault();
+        errorBox?.setAttribute("hidden", "");
 
-          // Purely a UI affordance for the duration of this one request —
-          // doesn't touch the request itself, and nothing in spec/ drives
-          // the client script's button behaviour (those files POST straight
-          // to /api/actions from Node, never through this loaded page), so
-          // there's no existing contract this could disturb.
-          const button = form.querySelector("button");
-          button?.setAttribute("data-loading", "");
-          if (button) button.disabled = true;
+        const formData = new FormData(form);
+        const actionName = String(formData.get("action") ?? "");
 
-          try {
-            // Not form.action: this form has a control named "action" (the
-            // hidden input carrying which action this is), and a named form
-            // control shadows the form element's own built-in `action`
-            // property in real browsers — form.action resolves to that
-            // HTMLInputElement, not the URL string, and fetch() silently
-            // stringifies it to "[object HTMLInputElement]". getAttribute()
-            // reads the literal attribute value, bypassing that shadowing
-            // entirely, and is what a real Chrome diagnostic (status 404,
-            // url ending in "/[object%20HTMLInputElement]") confirmed was
-            // actually happening — never reproduced by any scripted request,
-            // since those never touched the DOM's `form.action` property at
-            // all. Never rename the "action" input to dodge this: the
-            // server's whole validated vocabulary (src/lib/creature.ts
-            // ACTIONS, src/pages/api/actions.ts's form.get("action")) is
-            // built around that field name, and it's correct — the bug was
-            // purely in how the URL got read on this side.
-            const actionUrl = form.getAttribute("action") ?? "/api/actions";
-            const res = await fetch(actionUrl, { method: "POST", body: formData });
+        // Purely a UI affordance for the duration of this one request —
+        // doesn't touch the request itself, and nothing in spec/ drives
+        // the client script's button behaviour (those files POST straight
+        // to /api/actions from Node, never through this loaded page), so
+        // there's no existing contract this could disturb.
+        const button = form.querySelector("button");
+        button?.setAttribute("data-loading", "");
+        if (button) button.disabled = true;
 
-            if (res.redirected) {
-              // Success: re-fetch and swap the COMPLETE live state — stats,
-              // condition, activity, last action, and history together —
-              // the same path an SSE "update" event triggers for everyone
-              // else, so the actor's own tab and every other open tab go
-              // through the exact same, single, tested refresh.
-              await refreshLiveState();
-              // Only reachable because THIS tab's own fetch just observed
-              // res.redirected === true for ITS OWN request — the one
-              // signal that's always been reliable here (Incident 1), and
-              // already local to this closure. Applied AFTER the swap
-              // above, to the freshly-inserted Milo node: refreshLiveState()
-              // replaces #live-state wholesale, so setting this any earlier
-              // would just be discarded with the old node. No other tab's
-              // script ever runs this line for someone else's action — the
-              // only other way anything here calls refreshLiveState() is
-              // the SSE "update" listener below, which never calls
-              // playReaction. See Milo.astro for what each action reveals.
-              playReaction(actionName);
-              return;
-            }
+        try {
+          // Not form.action: this form has a control named "action" (the
+          // hidden input carrying which action this is), and a named form
+          // control shadows the form element's own built-in `action`
+          // property in real browsers — form.action resolves to that
+          // HTMLInputElement, not the URL string, and fetch() silently
+          // stringifies it to "[object HTMLInputElement]". getAttribute()
+          // reads the literal attribute value, bypassing that shadowing
+          // entirely, and is what a real Chrome diagnostic (status 404,
+          // url ending in "/[object%20HTMLInputElement]") confirmed was
+          // actually happening — never reproduced by any scripted request,
+          // since those never touched the DOM's `form.action` property at
+          // all. Never rename the "action" input to dodge this: the
+          // server's whole validated vocabulary (src/lib/creature.ts
+          // ACTIONS, src/pages/api/actions.ts's form.get("action")) is
+          // built around that field name, and it's correct — the bug was
+          // purely in how the URL got read on this side.
+          const actionUrl = form.getAttribute("action") ?? "/api/actions";
+          const res = await fetch(actionUrl, { method: "POST", body: formData });
 
-            const reason = await readRejectionReason(res);
-            if (errorBox) {
-              errorBox.textContent = reason ?? "that action isn't available right now";
-              errorBox.removeAttribute("hidden");
-            }
-
-            // A rejection means this tab's own view of Milo might be exactly
-            // what caused it — e.g. this tab still showed "awake" because it
-            // missed the event for a sleep someone else (or this same tab,
-            // earlier) triggered, and the server, correctly, just said
-            // otherwise. Refreshing here is what makes that visible instead
-            // of leaving a stale badge sitting right next to a reason that
-            // contradicts it: the one authoritative picture is always
-            // whatever the server just said, never whatever this tab
-            // happened to be showing before it asked. Deliberately no
-            // playReaction() call on this path — a rejection never earns a
-            // successful-action reaction.
+          if (res.redirected) {
+            // Success: re-fetch and swap the COMPLETE live state — stats,
+            // condition, activity, last action, and history together —
+            // the same path an SSE "update" event triggers for everyone
+            // else, so the actor's own tab and every other open tab go
+            // through the exact same, single, tested refresh.
             await refreshLiveState();
-          } finally {
-            button?.removeAttribute("data-loading");
-            if (button) button.disabled = false;
+            // Only reachable because THIS tab's own fetch just observed
+            // res.redirected === true for ITS OWN request — the one
+            // signal that's always been reliable here (Incident 1), and
+            // already local to this closure. Applied AFTER the swap
+            // above, to the freshly-inserted Milo node: refreshLiveState()
+            // replaces #live-state wholesale, so setting this any earlier
+            // would just be discarded with the old node. No other tab's
+            // script ever runs this line for someone else's action — the
+            // only other way anything here calls refreshLiveState() is
+            // the SSE "update" listener below, which never calls
+            // playReaction. See Milo.astro for what each action reveals.
+            playReaction(actionName);
+            return;
           }
-        });
-      }
+
+          const reason = await readRejectionReason(res);
+          if (errorBox) {
+            errorBox.textContent = reason ?? "that action isn't available right now";
+            errorBox.removeAttribute("hidden");
+          }
+
+          // A rejection means this tab's own view of Milo might be exactly
+          // what caused it — e.g. this tab still showed "awake" because it
+          // missed the event for a sleep someone else (or this same tab,
+          // earlier) triggered, and the server, correctly, just said
+          // otherwise. Refreshing here is what makes that visible instead
+          // of leaving a stale badge sitting right next to a reason that
+          // contradicts it: the one authoritative picture is always
+          // whatever the server just said, never whatever this tab
+          // happened to be showing before it asked. Deliberately no
+          // playReaction() call on this path — a rejection never earns a
+          // successful-action reaction.
+          await refreshLiveState();
+        } finally {
+          button?.removeAttribute("data-loading");
+          if (button) button.disabled = false;
+        }
+      });
 
       // Brief, additive post-success reaction — see the call site above for
       // why this can only ever run in the tab whose own action just

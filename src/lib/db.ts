@@ -1,10 +1,21 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import Database from "better-sqlite3";
-import { desc, eq, notInArray, sql } from "drizzle-orm";
+import { desc, eq, min, notInArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import { type ActionName, type Activity, type Stats, applyAction, deriveHealth, resolveActivity } from "./creature";
+import {
+  type ActionName,
+  type Activity,
+  type HatOption,
+  type NeckwearOption,
+  type Stats,
+  applyAction,
+  applyAdventure,
+  describeWardrobe,
+  deriveHealth,
+  resolveActivity,
+} from "./creature";
 import { type CareEvent, type Creature, type Session, careEvents, creature, sessions } from "./schema";
 import { broadcastUpdate } from "./sse";
 
@@ -106,6 +117,8 @@ export interface CreatureState {
   lastActorLabel: string | null;
   updatedAt: string;
   history: CareHistoryEntry[];
+  hat: HatOption | null;
+  neckwear: NeckwearOption | null;
 }
 
 function listRecentCareHistory(handle: Handle, limit: number): CareHistoryEntry[] {
@@ -175,7 +188,26 @@ function toState(handle: Handle, row: Creature): CreatureState {
     lastActorLabel: lastActor?.label ?? null,
     updatedAt: resolvedRow.updatedAt,
     history: listRecentCareHistory(handle, CARE_HISTORY_DISPLAY),
+    // Stored as plain `text` (nullable) in schema.ts; the vocabulary that
+    // makes these HatOption/NeckwearOption is only ever written through
+    // performWardrobeChange()'s validation below, so a cast here is safe —
+    // the column can never hold anything outside that vocabulary in practice.
+    hat: resolvedRow.hat as HatOption | null,
+    neckwear: resolvedRow.neckwear as NeckwearOption | null,
   };
+}
+
+// Read-only, no transaction needed: the earliest a session row was ever
+// created. Stable once set (sessions.createdAt is written once at insert
+// and never touched again — only lastSeenAt is), and never empty by the
+// time anything asks, since getOrCreateSession() has already run for
+// whoever's asking before this is ever called (src/pages/index.astro).
+// Examined, not assumed: no existing field on `creature` itself is stable
+// (updatedAt changes on every mutation), so this reuses `sessions` rather
+// than adding a new column for Milo's age.
+export function getMiloAge(): string | null {
+  const row = db.select({ first: min(sessions.createdAt) }).from(sessions).get();
+  return row?.first ?? null;
 }
 
 // Always a fresh read from SQLite — never from anything held in a variable
@@ -252,6 +284,103 @@ export function performAction(action: ActionName, sessionId: string): CreatureSt
   // never run for a mutation that could still be rolled back.
   if (!("reason" in result)) broadcastUpdate();
 
+  return result;
+}
+
+export type WardrobeSlot = "hat" | "neckwear";
+
+// Same transactional shape as performAction (one db.transaction, no await
+// inside), but never rejects: a wardrobe change is cosmetic, touches no
+// stat, and is allowed even while asleep — there's no rule for it to break.
+// Still goes through a transaction and still writes one care_events row,
+// because "shared, attributed, visible in Recent care" is the whole point
+// (CLAUDE.md, Decision 6), not just a bonus for the five care actions.
+//
+// Takes ONE slot and its new value — never both slots at once — and reads
+// the CURRENT row for whichever slot isn't being touched, inside this same
+// transaction. This is the fix for a real lost-update bug found in review:
+// the original version took a full {hat, neckwear} pair from the client,
+// which included whatever value that client's page happened to show for
+// the slot it *wasn't* changing — correct only as long as nothing else had
+// changed that slot since that page was rendered. Two sessions changing
+// different slots in quick succession (or even one session acting on a
+// page it loaded a while ago) could silently revert the other session's
+// choice. Reading the untouched slot fresh, inside the same transaction
+// that writes the touched one, makes that impossible regardless of how
+// stale either client's rendered page is — the same "always derive from a
+// fresh read inside the transaction" principle performAction already
+// follows for stats (PROCESS.md, Decision 4), just not followed here
+// originally.
+export function performWardrobeChange(slot: WardrobeSlot, value: string | null, sessionId: string): CreatureState {
+  const result = db.transaction((tx) => {
+    const row = readRow(tx);
+    // `value` is validated against the right vocabulary for `slot` by the
+    // caller (api/wardrobe.ts's isHatOption/isNeckwearOption) before this
+    // ever runs — the casts here just reflect that already-checked fact,
+    // not a new assumption.
+    const hat = slot === "hat" ? (value as HatOption | null) : ((row.hat as HatOption | null) ?? null);
+    const neckwear = slot === "neckwear" ? (value as NeckwearOption | null) : ((row.neckwear as NeckwearOption | null) ?? null);
+
+    tx.update(creature)
+      .set({
+        hat,
+        neckwear,
+        lastAction: "wardrobe",
+        lastActorSessionId: sessionId,
+        updatedAt: sql`(datetime('now'))`,
+      })
+      .where(eq(creature.id, CREATURE_ID))
+      .run();
+
+    tx.insert(careEvents)
+      .values({ sessionId, action: "wardrobe", summary: describeWardrobe(hat, neckwear) })
+      .run();
+    pruneCareHistory(tx);
+
+    return toState(tx, readRow(tx));
+  });
+
+  broadcastUpdate();
+  return result;
+}
+
+// Same transactional pattern as performAction: read, resolve any expired
+// sleep, validate via the pure applyAdventure (src/lib/creature.ts), write,
+// record, prune, return the fresh state — all inside one transaction, no
+// `await` in between, for the same concurrency reason as every other
+// mutation here (PROCESS.md, Decision 4).
+export function performAdventure(sessionId: string): CreatureState | ActionRejection {
+  const result = db.transaction((tx) => {
+    const row = readRow(tx);
+    const now = new Date();
+    const resolvedRow = resolveAndSync(tx, row, now);
+    const resolved = {
+      stats: resolvedRow as Stats,
+      activity: resolvedRow.activity as Activity,
+      activityUntil: resolvedRow.activityUntil,
+    };
+    const outcome = applyAdventure(resolved);
+    if (!outcome.ok) return { reason: outcome.reason };
+
+    tx.update(creature)
+      .set({
+        ...outcome.result.stats,
+        activity: outcome.result.activity,
+        activityUntil: outcome.result.activityUntil,
+        lastAction: "adventure",
+        lastActorSessionId: sessionId,
+        updatedAt: sql`(datetime('now'))`,
+      })
+      .where(eq(creature.id, CREATURE_ID))
+      .run();
+
+    tx.insert(careEvents).values({ sessionId, action: "adventure", summary: outcome.result.summary }).run();
+    pruneCareHistory(tx);
+
+    return toState(tx, readRow(tx));
+  });
+
+  if (!("reason" in result)) broadcastUpdate();
   return result;
 }
 

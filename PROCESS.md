@@ -214,6 +214,64 @@ phrase make the shared creature feel like one specific, continuous thing
 worth caring about, without adding any naming system, character creation,
 or new server-side concept — see commit `a19b9a3`.
 
+## Decision 10 — Milo's age reuses an existing field, not a new one
+
+**Decision.** Milo's age is `MIN(sessions.createdAt)` — the earliest
+session this room has ever seen — not a new `created_at` column on
+`creature`.
+
+**Why.** `creature` has no stable creation timestamp: `updated_at` is
+overwritten on every mutation (Decision 4's own transaction touches it),
+so it can't answer "how old is Milo." `sessions.created_at`, by contrast,
+is written once at insert and never touched again (only `last_seen_at`
+is), and by the time anything on the page can even ask for Milo's age,
+`getOrCreateSession()` has already run for whoever's looking — so the
+query is never empty in practice. Reusing it costs nothing: no migration,
+no new column, no second timestamp to keep in sync with reality. The
+trade-off, stated plainly: this is "how long this shared space has been
+visited," not literally "how long the `creature` row has existed" — the
+gap between those two moments is however long the server sat idle before
+its first visitor, which is the cost of not adding a column for this.
+
+## Decision 11 — wardrobe is cosmetic, shared state, not an inventory
+
+**Decision.** Two columns on the one `creature` row — `hat`, `neckwear` —
+each a small fixed, authored vocabulary, each independently nullable
+("nothing in this slot" is always a valid, un-rejectable choice). No
+acquisition, no scarcity, no per-session ownership, nothing to unlock or
+manage.
+
+**Why this isn't the "shops, inventories" this deliverable rules out.**
+The out-of-scope list below names "shops, inventories" because those imply
+something to acquire, something scarce, something owned — exactly what
+would turn shared care into a collection to manage or compete over. A
+wardrobe pick here is the same shape as `activity` being `idle` or
+`sleeping`: one more fact about the one shared creature, changeable by
+anyone, visible to everyone, costing nothing and limiting nothing. It's
+recorded in `care_events` (`action: "wardrobe"`) for the same reason every
+other change is — visible, attributed, chronological (Decision 6) — not
+because it's a sixth care action.
+
+## Decision 12 — adventure: one outcome, deterministic, not a sixth action
+
+**Decision.** One adventure, not several; no dice roll on whether it
+succeeds or what it does. It follows the exact rejection rule every
+non-`clean`/`sleep` action already follows (not while asleep) and costs
+`energy −10, cleanliness −30`, giving `happiness +15` — the largest
+cleanliness cost of anything in the game, on purpose.
+
+**Why.** The brief explicitly rules out random failures; building any
+chance of "the adventure goes wrong" would be exactly that, dressed up as
+flavour. Determinism was chosen over variety here specifically to avoid
+that risk. The oversized cleanliness cost is the entire mechanism for
+"visually indicates a Clean would help": it's a bigger pull on the exact
+same stat Decision 3's `applyAction` already uses, read by the exact same
+stat-driven expression Milo already has — not a second visual system
+invented for this one activity. Kept out of `ACTIONS`/`applyAction`
+deliberately (its own `applyAdventure`, its own route,
+`src/pages/api/adventure.ts`) so Decision 3's "exactly five actions" stays
+true in code, not just in spirit.
+
 ## Out of scope for this deliverable (unchanged from the course's own list)
 
 No accounts/profiles, chat, voting/likes, maps, push/SMS/email

@@ -38,6 +38,13 @@ export const creature = sqliteTable("creature", {
   updatedAt: text("updated_at")
     .notNull()
     .default(sql`(datetime('now'))`),
+  // Shared, cosmetic, free — not an inventory: nothing to acquire, no
+  // scarcity, no per-user ownership. Each is just "what is Milo wearing
+  // right now," the same shape as `activity` being idle/sleeping. Null
+  // means that slot is empty; see src/lib/creature.ts for the fixed,
+  // authored vocabulary each one is validated against.
+  hat: text(),
+  neckwear: text(),
 });
 
 // A lightweight, unauthenticated visitor identity: a random token set as an

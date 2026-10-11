@@ -46,6 +46,43 @@ function clamp(n: number): number {
   return Math.max(0, Math.min(100, n));
 }
 
+// ---- shared wardrobe: cosmetic, free, not an inventory ---------------------
+// Two independent slots, each a small fixed vocabulary (never free text) —
+// validated the same way ACTIONS is. Deliberately kept out of ACTIONS/
+// applyAction entirely: this isn't a sixth care action, and the five-action
+// contract (CLAUDE.md, "Exactly five actions") stays exactly five, in code
+// and in what ACTIONS.length reports.
+export const WARDROBE_HATS = ["top-hat", "party-hat"] as const;
+export type HatOption = (typeof WARDROBE_HATS)[number];
+
+export const WARDROBE_NECKWEAR = ["bow-tie", "scarf"] as const;
+export type NeckwearOption = (typeof WARDROBE_NECKWEAR)[number];
+
+export const WARDROBE_LABELS: Record<HatOption | NeckwearOption, string> = {
+  "top-hat": "Top Hat",
+  "party-hat": "Party Hat",
+  "bow-tie": "Bow Tie",
+  scarf: "Scarf",
+};
+
+// `null` means "take it off" for that slot — always a valid choice, never a
+// rejection, since this never touches a stat and never depends on activity.
+export function isHatOption(value: string | null): value is HatOption | null {
+  return value === null || (WARDROBE_HATS as readonly string[]).includes(value);
+}
+
+export function isNeckwearOption(value: string | null): value is NeckwearOption | null {
+  return value === null || (WARDROBE_NECKWEAR as readonly string[]).includes(value);
+}
+
+// A short, human summary of what changed — mirrors applyAction's summary
+// strings so the same Recent-care sentence template works unmodified.
+export function describeWardrobe(hat: HatOption | null, neckwear: NeckwearOption | null): string {
+  const worn = [hat, neckwear].filter((item): item is HatOption | NeckwearOption => item !== null);
+  if (worn.length === 0) return "now wearing nothing special";
+  return `now wearing: ${worn.map((item) => WARDROBE_LABELS[item]).join(", ")}`;
+}
+
 // A simple average of the four needs. Deliberately never stored and never
 // mutated directly — see PROCESS.md, Decision 2. Read-only, every time.
 export function deriveHealth(stats: Stats): number {
@@ -154,4 +191,31 @@ export function applyAction(action: ActionName, snapshot: CreatureSnapshot, now:
       return { ok: false, reason: `unknown action: ${_exhaustive}` };
     }
   }
+}
+
+// ---- adventure: a shared activity, not a sixth care action -----------------
+// Deliberately not part of ACTIONS/applyAction's switch — same reasoning as
+// the wardrobe functions above. One adventure, one deterministic outcome:
+// no dice roll on success/failure (the brief explicitly rules out "random
+// failures"), and the one real rejection rule it does follow is the exact
+// same "not while asleep" rule every non-clean/non-sleep action already
+// follows (applyAction, above) — not a new rule invented for this. The
+// biggest cleanliness cost of anything in the game is the point: it's what
+// pushes the real, already-existing messy-family expression (Milo.astro)
+// to show up on its own, which is what "visually indicates a Clean would
+// help" means here — no separate visual mechanic for this.
+export function applyAdventure(snapshot: CreatureSnapshot): ActionOutcome {
+  if (snapshot.activity === "sleeping") {
+    return { ok: false, reason: "the creature is asleep right now" };
+  }
+  return unchanged(
+    {
+      ...snapshot.stats,
+      happiness: clamp(snapshot.stats.happiness + 15),
+      energy: clamp(snapshot.stats.energy - 10),
+      cleanliness: clamp(snapshot.stats.cleanliness - 30),
+    },
+    snapshot,
+    "happiness +15, energy −10, cleanliness −30 — came back muddy",
+  );
 }

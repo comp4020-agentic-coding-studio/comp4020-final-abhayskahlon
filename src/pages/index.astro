@@ -1,6 +1,7 @@
 ---
 import ActionIcon from "../components/ActionIcon.astro";
 import Milo from "../components/Milo.astro";
+import StatIcon from "../components/StatIcon.astro";
 import { ACTIONS, type ActionName } from "../lib/creature";
 import { getCreatureState } from "../lib/db";
 import { getOrCreateSession } from "../lib/session";
@@ -88,7 +89,7 @@ const activityPhrase =
         <section class="panel creature-panel" aria-labelledby="creature-heading">
           <h2 id="creature-heading">{CREATURE_NAME}</h2>
 
-          <Milo activity={state.activity} health={state.health} lastAction={state.lastAction} />
+          <Milo activity={state.activity} stats={state.stats} />
 
           <span
             class={`activity-badge ${state.activity}`}
@@ -101,7 +102,10 @@ const activityPhrase =
           {
             (Object.keys(STAT_LABELS) as (keyof typeof STAT_LABELS)[]).map((key) => (
               <div class="stat-row" data-stat={key}>
-                <span>{STAT_LABELS[key]}</span>
+                <span class="stat-label">
+                  <StatIcon stat={key} class="stat-icon" />
+                  {STAT_LABELS[key]}
+                </span>
                 <span class="stat-bar">
                   <span class="stat-bar-fill" style={`width: ${state.stats[key]}%`} />
                 </span>
@@ -144,7 +148,7 @@ const activityPhrase =
                   <ActionIcon action={entry.action as ActionName} class="history-icon" />
                   <span>
                     <strong>{entry.actorLabel}</strong> {ACTION_PAST_TENSE[entry.action] ?? entry.action} {CREATURE_NAME}{" "}
-                    ({entry.summary}) — {entry.createdAt}
+                    ({entry.summary}) — <span class="history-time">{entry.createdAt}</span>
                   </span>
                 </li>
               ))
@@ -221,53 +225,98 @@ const activityPhrase =
           errorBox?.setAttribute("hidden", "");
 
           const formData = new FormData(form);
+          const actionName = String(formData.get("action") ?? "");
 
-          // Not form.action: this form has a control named "action" (the
-          // hidden input carrying which action this is), and a named form
-          // control shadows the form element's own built-in `action`
-          // property in real browsers — form.action resolves to that
-          // HTMLInputElement, not the URL string, and fetch() silently
-          // stringifies it to "[object HTMLInputElement]". getAttribute()
-          // reads the literal attribute value, bypassing that shadowing
-          // entirely, and is what a real Chrome diagnostic (status 404,
-          // url ending in "/[object%20HTMLInputElement]") confirmed was
-          // actually happening — never reproduced by any scripted request,
-          // since those never touched the DOM's `form.action` property at
-          // all. Never rename the "action" input to dodge this: the
-          // server's whole validated vocabulary (src/lib/creature.ts
-          // ACTIONS, src/pages/api/actions.ts's form.get("action")) is
-          // built around that field name, and it's correct — the bug was
-          // purely in how the URL got read on this side.
-          const actionUrl = form.getAttribute("action") ?? "/api/actions";
-          const res = await fetch(actionUrl, { method: "POST", body: formData });
+          // Purely a UI affordance for the duration of this one request —
+          // doesn't touch the request itself, and nothing in spec/ drives
+          // the client script's button behaviour (those files POST straight
+          // to /api/actions from Node, never through this loaded page), so
+          // there's no existing contract this could disturb.
+          const button = form.querySelector("button");
+          button?.setAttribute("data-loading", "");
+          if (button) button.disabled = true;
 
-          if (res.redirected) {
-            // Success: re-fetch and swap the COMPLETE live state — stats,
-            // condition, activity, last action, and history together —
-            // the same path an SSE "update" event triggers for everyone
-            // else, so the actor's own tab and every other open tab go
-            // through the exact same, single, tested refresh.
+          try {
+            // Not form.action: this form has a control named "action" (the
+            // hidden input carrying which action this is), and a named form
+            // control shadows the form element's own built-in `action`
+            // property in real browsers — form.action resolves to that
+            // HTMLInputElement, not the URL string, and fetch() silently
+            // stringifies it to "[object HTMLInputElement]". getAttribute()
+            // reads the literal attribute value, bypassing that shadowing
+            // entirely, and is what a real Chrome diagnostic (status 404,
+            // url ending in "/[object%20HTMLInputElement]") confirmed was
+            // actually happening — never reproduced by any scripted request,
+            // since those never touched the DOM's `form.action` property at
+            // all. Never rename the "action" input to dodge this: the
+            // server's whole validated vocabulary (src/lib/creature.ts
+            // ACTIONS, src/pages/api/actions.ts's form.get("action")) is
+            // built around that field name, and it's correct — the bug was
+            // purely in how the URL got read on this side.
+            const actionUrl = form.getAttribute("action") ?? "/api/actions";
+            const res = await fetch(actionUrl, { method: "POST", body: formData });
+
+            if (res.redirected) {
+              // Success: re-fetch and swap the COMPLETE live state — stats,
+              // condition, activity, last action, and history together —
+              // the same path an SSE "update" event triggers for everyone
+              // else, so the actor's own tab and every other open tab go
+              // through the exact same, single, tested refresh.
+              await refreshLiveState();
+              // Only reachable because THIS tab's own fetch just observed
+              // res.redirected === true for ITS OWN request — the one
+              // signal that's always been reliable here (Incident 1), and
+              // already local to this closure. Applied AFTER the swap
+              // above, to the freshly-inserted Milo node: refreshLiveState()
+              // replaces #live-state wholesale, so setting this any earlier
+              // would just be discarded with the old node. No other tab's
+              // script ever runs this line for someone else's action — the
+              // only other way anything here calls refreshLiveState() is
+              // the SSE "update" listener below, which never calls
+              // playReaction. See Milo.astro for what each action reveals.
+              playReaction(actionName);
+              return;
+            }
+
+            const reason = await readRejectionReason(res);
+            if (errorBox) {
+              errorBox.textContent = reason ?? "that action isn't available right now";
+              errorBox.removeAttribute("hidden");
+            }
+
+            // A rejection means this tab's own view of Milo might be exactly
+            // what caused it — e.g. this tab still showed "awake" because it
+            // missed the event for a sleep someone else (or this same tab,
+            // earlier) triggered, and the server, correctly, just said
+            // otherwise. Refreshing here is what makes that visible instead
+            // of leaving a stale badge sitting right next to a reason that
+            // contradicts it: the one authoritative picture is always
+            // whatever the server just said, never whatever this tab
+            // happened to be showing before it asked. Deliberately no
+            // playReaction() call on this path — a rejection never earns a
+            // successful-action reaction.
             await refreshLiveState();
-            return;
+          } finally {
+            button?.removeAttribute("data-loading");
+            if (button) button.disabled = false;
           }
-
-          const reason = await readRejectionReason(res);
-          if (errorBox) {
-            errorBox.textContent = reason ?? "that action isn't available right now";
-            errorBox.removeAttribute("hidden");
-          }
-
-          // A rejection means this tab's own view of Milo might be exactly
-          // what caused it — e.g. this tab still showed "awake" because it
-          // missed the event for a sleep someone else (or this same tab,
-          // earlier) triggered, and the server, correctly, just said
-          // otherwise. Refreshing here is what makes that visible instead
-          // of leaving a stale badge sitting right next to a reason that
-          // contradicts it: the one authoritative picture is always
-          // whatever the server just said, never whatever this tab
-          // happened to be showing before it asked.
-          await refreshLiveState();
         });
+      }
+
+      // Brief, additive post-success reaction — see the call site above for
+      // why this can only ever run in the tab whose own action just
+      // genuinely succeeded. Milo.astro always renders all five reaction
+      // groups, hidden by CSS; this only ever toggles which one is visible,
+      // never anything about the real, server-rendered expression beneath
+      // it, and never anything that could be mistaken for a second copy of
+      // creature state.
+      let reactionTimer: ReturnType<typeof setTimeout> | undefined;
+      function playReaction(action: string) {
+        const milo = document.querySelector<HTMLElement>(".milo-visual");
+        if (!milo) return;
+        clearTimeout(reactionTimer);
+        milo.setAttribute("data-reaction", action);
+        reactionTimer = setTimeout(() => milo.removeAttribute("data-reaction"), 1600);
       }
 
       // Purely cosmetic countdown of a timestamp the server already sent —

@@ -99,9 +99,15 @@ changed and why it isn't a quiet contradiction.
 7. **The legacy single creature migrates into a fixed default room, not a
    reset.** The migration that adds these columns (`drizzle/0003_*.sql`)
    backfills any pre-existing creature/session/care-event rows into one
-   room, `id = "COMMONS"`, attributing it to whoever the old row's
-   `last_actor_session_id` was. On a fresh database every backfill
-   statement matches zero rows — a correct no-op, not a forced room.
+   room, `id = "COMMONS"`. `host_session_id` is left `null` — the room
+   predates rooms entirely, so nobody actually hosted it, and attributing
+   it to whoever most recently acted would misrepresent a visitor as its
+   creator. `created_at` is backfilled from the earliest recorded session
+   (`MIN(sessions.created_at)`), not the creature row's own `updated_at`
+   (overwritten by every mutation, which would have silently reset Milo's
+   displayed age to "new" at migration time). On a fresh database every
+   backfill statement matches zero rows — a correct no-op, not a forced
+   room.
 
 8. **Server-side logging that outlives the crit.** `src/lib/log.ts` writes
    one structured JSON line to stdout for every room host/join/rejected-

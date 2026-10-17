@@ -38,8 +38,24 @@ ALTER TABLE `sessions` ADD `room_id` text REFERENCES rooms(id);--> statement-bre
 -- disruption (PROCESS.md, Decision 13). On a fresh/empty database every
 -- statement below matches zero rows — a correct no-op, not a forced
 -- default room, so a fresh `pnpm test` run still starts from nothing.
+--
+-- host_session_id is left NULL here, deliberately: nobody ever hosted this
+-- room (it predates rooms entirely), and the most recent actor is not the
+-- same thing as the creator — attributing it to whoever last happened to
+-- act would misrepresent them as having hosted something they didn't.
+--
+-- created_at is backfilled from the earliest session this app has ever
+-- seen (MIN(sessions.created_at)), not creature.updated_at (which is
+-- overwritten by every mutation, so by migration time it would read as
+-- "now" and silently reset Milo's displayed age to zero). This mirrors
+-- exactly what getMiloAge() used to compute pre-Decision-13 (PROCESS.md,
+-- Decision 10) — the oldest evidence this app has of when the shared
+-- space was first visited. COALESCE falls back to creature.updated_at
+-- only in the edge case where a creature row exists but no session ever
+-- has (should not happen in practice — every action requires a session
+-- first — but a migration shouldn't fail outright over it).
 INSERT INTO `rooms` (`id`, `host_session_id`, `created_at`)
-	SELECT 'COMMONS', `last_actor_session_id`, `updated_at` FROM `creature` LIMIT 1;--> statement-breakpoint
+	SELECT 'COMMONS', NULL, COALESCE((SELECT MIN(`created_at`) FROM `sessions`), `updated_at`) FROM `creature` LIMIT 1;--> statement-breakpoint
 UPDATE `creature` SET `room_id` = 'COMMONS' WHERE `room_id` IS NULL;--> statement-breakpoint
 UPDATE `sessions` SET `room_id` = 'COMMONS' WHERE `room_id` IS NULL
 	AND EXISTS (SELECT 1 FROM `rooms` WHERE `rooms`.`id` = 'COMMONS');--> statement-breakpoint

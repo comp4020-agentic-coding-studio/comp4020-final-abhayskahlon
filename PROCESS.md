@@ -318,10 +318,24 @@ decision, not as code quietly drifting away from its own rules.
 
 **The legacy single creature is not reset.** The schema migration
 (`drizzle/0003_*.sql`) backfills any pre-existing creature, sessions, and
-care history into one fixed room, `id = "COMMONS"`, attributed to whoever
-last acted on it — production's existing Milo and history survive with no
-visitor-facing disruption. On a fresh database, every backfill statement
-matches zero rows: a correct no-op, not a forced default room.
+care history into one fixed room, `id = "COMMONS"` — production's existing
+Milo and history survive with no visitor-facing disruption. On a fresh
+database, every backfill statement matches zero rows: a correct no-op, not
+a forced default room.
+
+Two details here were wrong in an earlier draft of this migration, caught
+and fixed before deploying: `host_session_id` is left `NULL`, not set to
+whoever most recently acted — the most recent actor isn't who created the
+room (which predates rooms entirely, so literally nobody hosted it), and
+attributing it to them would have shown a real visitor as "Hosted by X" for
+something they never did. `created_at` is backfilled from the earliest
+session this app has ever recorded (`MIN(sessions.created_at)`), not
+`creature.updated_at` — the latter is overwritten by every mutation
+(Decision 4's own transactions touch it), so reading it at migration time
+would have silently reset Milo's displayed age to "new" instead of
+preserving its real history. This mirrors exactly what `getMiloAge()` used
+to compute before Decision 13 (see Decision 10) — the oldest evidence this
+app has of when the shared space was first visited.
 
 **Server-side logging, added alongside this.** `src/lib/log.ts` writes one
 structured line to stdout per room host/join/rejected-join and per care

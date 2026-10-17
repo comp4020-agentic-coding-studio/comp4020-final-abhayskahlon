@@ -85,7 +85,41 @@ feature's access control.
 Stated honestly, not resolved: stdout logging alone is not a durable
 enough record for anything past the crit week itself, given what's
 actually confirmed about Fly's retention versus what the assessment
-timeline needs. `care_events` in SQLite is still the real durable record
-for successful actions; a small bounded table for rejections specifically
-is the identified next step if that gap turns out to matter later, not
-something built speculatively here.
+timeline needs. The identified next step — a small, bounded `log_events`
+table recording the same events durably — has since been built, with
+authorisation, once the retention gap was actually named as a real
+problem rather than left as a vague "worth considering later."
+
+**Building that table surfaced its own lesson, about testing migrations
+honestly.** The regression test for the rooms migration
+(`spec/room-migration-backfill.test.ts`) filtered which real migration
+files counted as "before rooms" by checking their file NAME — which
+happened to work, right up until a migration was added after rooms, at
+which point the filter silently included it in the wrong group. The
+actual effect was serious: drizzle's migrator tracks "already applied"
+against a single timestamp watermark, not which specific files ran, so
+including a later-dated migration in the "before rooms" simulation pushed
+that watermark forward and made the real migrator skip the ROOMS
+migration entirely on the next pass — the `rooms` table would never have
+been created, in a scenario this project's own test suite was supposed to
+be guarding against. This was caught only because the test actually ran
+the full real migration set afterward and asserted on what came out, not
+because anyone re-read the migration SQL and reasoned it through — the
+same "run the actual path, don't just read the code" standard this
+project's earlier incidents already established, showing up again at a
+layer (migration test infrastructure) that hadn't been exercised that way
+before. Fixed by filtering on timestamp position relative to the rooms
+migration instead of on the migration's name.
+
+The table itself was built to the standard the rest of this project holds
+rejection-handling to: a rejected action's log row has to survive even
+though its own mutation's transaction rolled back (solved by writing it
+as a plain statement after that transaction has already settled, never
+nested inside it), and a failure to write the log itself must never be
+allowed to change what the real action actually did (solved by catching
+that failure explicitly and proving it with a test that drops the real
+table out from under a running server mid-request, rather than just
+trusting a try/catch exists). Both of those are properties a casual
+reading of "add a table and write to it" would not have forced — they
+only showed up by asking "what happens when this specific thing fails,"
+the same question this project's whole incident log keeps coming back to.

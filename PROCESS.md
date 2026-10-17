@@ -412,16 +412,80 @@ roughly three weeks past this crit (2026-11-09) — well beyond even the
 documented 7-day figure. **stdout logs alone should not be relied on as
 the durable record for anything beyond the crit week itself.** `care_events`
 in SQLite remains the actually-durable, queryable record of every
-*successful* action for as long as the app's volume exists — which is the
-right fallback for anything beyond the crit's own live demo. If a durable,
-longer-lived record of *rejections* specifically (the one thing
-`care_events` never captures) turns out to matter for later assessment,
-the smallest addition would be a small, bounded `log_events` table
-(same shape as `care_events`, capped the same way per Decision 8) written
-alongside the existing stdout line rather than replacing it — no new
-external service, no new credential, same transaction. This has not been
-built: it's named here as the identified next step, pending a decision on
-whether it's actually needed, not implemented speculatively.
+*successful* action for as long as the app's volume exists. Given that
+gap, a small, bounded `log_events` table was built as the durable fallback
+— described next.
+
+**The `log_events` table (built, not just proposed).** A second,
+server-only, bounded record of every care action and room event, success
+and rejection alike — the actual durable fallback for whatever Fly's log
+retention turns out to be, since that couldn't be independently confirmed
+(above). `src/lib/db.ts`'s `safeWriteLogEvent()` writes one row per event,
+immediately after the event's own outcome is already decided; a read-only
+route, `src/pages/api/rooms/events.ts`, lets the current session read
+*its own room's* rows back (JSON, not a rendered page) — the same
+server-derived-room-never-client-supplied rule every other route already
+follows (docs/adr/0002): there is no room-id parameter this route accepts,
+so a session can only ever read the room its own trusted cookie names.
+
+Design choices, each made deliberately:
+
+- **Durability despite a rolled-back transaction.** A rejected action's
+  own mutation transaction never commits (by design — CLAUDE.md). Its log
+  row still must. `safeWriteLogEvent()` is called AFTER the mutation's
+  `db.transaction(...)` has already returned — committed or rolled back —
+  as a plain, unconditional statement outside that transaction, with the
+  SAME final `outcome`/`reason` the stdout log already received. This is
+  what makes a rejection durably recorded despite its own mutation never
+  landing: the log write was never nested inside the thing that rolled
+  back in the first place.
+- **No raw credential, ever.** `log_events.actor` reuses `src/lib/log.ts`'s
+  `actorTag()` — the exact same one-way SHA-256 digest the stdout channel
+  already uses (exported from `log.ts` specifically so there is exactly
+  one definition of "how a session id becomes a loggable actor," never two
+  that could drift). The raw session id is never passed anywhere near this
+  table.
+- **Explicit failure handling.** `writeLogEvent()`'s own insert can itself
+  fail (disk, corruption, anything); `safeWriteLogEvent()` wraps it in a
+  try/catch and logs the failure to stderr rather than letting it
+  propagate. Every call site invokes this AFTER the action's real,
+  already-independently-decided result is computed — a logging failure can
+  therefore only ever cost a missing audit row, never flip a rejection
+  into an apparent success or vice versa. `spec/log-events.test.ts` proves
+  this against a REAL server instance by dropping `log_events` from a
+  separate connection to the same database file mid-test and confirming
+  both a successful and a rejected action still behave correctly, and the
+  server stays up.
+- **Bounded, per room, same pattern as `care_events`.** `LOG_EVENTS_LIMIT`
+  (200, in `src/lib/db.ts`) caps each room's own rows independently,
+  pruned on every durable write — the same "capped, not unlimited" shape
+  Decision 8 already established for `care_events`, sized larger because
+  this table is the only durable record of rejections too (which
+  `care_events` never stores). A durable log that could grow forever would
+  eventually threaten the one-volume deployment's disk, defeating its own
+  purpose.
+- **Room isolation, enforced the same way as everywhere else.** The read
+  route derives the room from the trusted session cookie, never a request
+  parameter — the exact mechanism docs/adr/0002 already established for
+  every mutating route, extended to this one read route.
+- **No external service, no new credential.** Everything here is SQLite,
+  on the same volume, through the same `drizzle` connection every other
+  table already uses.
+
+A real migration bug was found and fixed while building this.
+`spec/room-migration-backfill.test.ts`'s own simulation filtered "pre-rooms
+migrations" by *name* (excluding the rooms migration's tag) rather than by
+*position* — harmless until a migration was added AFTER rooms (this one):
+drizzle-kit's migrator tracks "already applied" against the single most
+recent migration's timestamp, not which specific migrations ran, so
+leaving a later-timestamped migration in the "pre-rooms" set pushed that
+watermark past the rooms migration's own timestamp and caused the real
+migrator to skip the rooms migration entirely on the subsequent full pass
+— silently leaving the `rooms` table missing. Caught only because the test
+actually ran the full real migration set afterward and asserted on its
+result, not by reading the migration SQL and reasoning about it. Fixed by
+filtering on the journal's timestamp ordering relative to the rooms
+migration, not its name.
 
 **Why not rely on `creature.id` reuse or a single global row with a
 "current room" flag.** A room needs its own independent stats, activity

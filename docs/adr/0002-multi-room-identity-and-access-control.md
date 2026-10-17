@@ -109,24 +109,43 @@ changed and why it isn't a quiet contradiction.
    backfill statement matches zero rows — a correct no-op, not a forced
    room.
 
-8. **Server-side logging, scoped by room and a non-reversible actor tag.**
-   `src/lib/log.ts` writes one structured JSON line to stdout for every
-   room host/join/rejected-join and every care action's outcome (success
-   *and* rejection), scoped by room and session. This is Fly's own log
-   collector, read live via `mise exec -- flyctl logs -a <repo>` during the
-   crit's own demo — not a new database table — because a rejection's
-   attribution (who tried what, and why it didn't go through) is the one
-   thing `care_events` can never show, since a rejection is never written
-   there (CLAUDE.md). Each line's `actor` field is a one-way SHA-256 digest
-   of the session id, never the raw id — an earlier draft logged the raw
-   value, which IS the session's entire bearer credential (Decision 7, no
-   password layer), making every log line a potential session-hijack
-   vector for anyone who could read it; found and fixed in ship-readiness
-   review (`spec/logging.test.ts` proves it directly against a real
-   server's captured stdout). **Retention is documented by Fly as roughly
-   7 days, but was not independently confirmed for this specific org/app**
-   — see PROCESS.md, Decision 13, for the full accounting and why stdout
-   logs alone should not be relied on past the crit week itself.
+8. **Server-side logging, scoped by room and a non-reversible actor tag,
+   with a bounded durable fallback.** `src/lib/log.ts` writes one
+   structured JSON line to stdout for every room host/join/rejected-join
+   and every care action's outcome (success *and* rejection), scoped by
+   room and session — this is Fly's own log collector, read live via
+   `mise exec -- flyctl logs -a <repo>` during the crit's own demo, because
+   a rejection's attribution (who tried what, and why it didn't go
+   through) is the one thing `care_events` can never show, since a
+   rejection is never written there (CLAUDE.md). Each line's `actor` field
+   is a one-way SHA-256 digest of the session id, never the raw id — an
+   earlier draft logged the raw value, which IS the session's entire
+   bearer credential (Decision 7, no password layer), making every log
+   line a potential session-hijack vector for anyone who could read it;
+   found and fixed in ship-readiness review (`spec/logging.test.ts` proves
+   it directly against a real server's captured stdout).
+
+   **Retention is documented by Fly as roughly 7 days, but was not
+   independently confirmed for this specific org/app** — see PROCESS.md,
+   Decision 13, for the full accounting. Because of that gap, and because
+   the final project's assessment window extends well past even the
+   documented figure, a second, durable, bounded `log_events` table
+   (`drizzle/0004_*.sql`) now records every one of the same events — read
+   back by the current session's own room only, via
+   `src/pages/api/rooms/events.ts`, which derives its room from the
+   trusted session cookie exactly like every mutating route (point 3,
+   above) — never a request parameter. This is the smallest viable
+   durable fallback: same database, same connection, no external service,
+   no new credential, the exact same non-reversible `actor` tag reused
+   (not reimplemented) from the stdout channel, and bounded per room
+   (`LOG_EVENTS_LIMIT`, same prune-on-write pattern as `care_events`'s own
+   `CARE_HISTORY_LIMIT`, Decision 8) so a durable log can't grow without
+   limit on the one-volume deployment. A logging failure (the insert
+   itself throwing) is caught and logged to stderr rather than propagated,
+   specifically so it can never turn a real rejection into an apparent
+   success or vice versa — proved directly in `spec/log-events.test.ts` by
+   dropping the table from a separate connection mid-test and confirming
+   the app's own mutations are completely unaffected.
 
 ## Alternatives considered
 
@@ -213,3 +232,17 @@ changed and why it isn't a quiet contradiction.
   session's `/api/events` 403, and a rejected care action's reason and log
   line, all checked directly over HTTP before any automated test existed
   for them.
+- `spec/log-events.test.ts` — a successful and a rejected care action are
+  both durably recorded with a timestamp, room id, non-reversible actor
+  tag, action, outcome and (when rejected) real reason; a logging write
+  failure (the table dropped from a separate connection mid-test) never
+  changes the action's own outcome and the server stays up; room isolation
+  holds for the read route exactly as for every mutating one; the same
+  session always produces the same actor tag; every row's `actor` column
+  is confirmed to look like a hashed tag, never a raw session id; pruning
+  brings a room's own rows back under the bound while a different room's
+  rows are completely untouched.
+- `spec/log-events-migration.test.ts` — the `log_events` migration creates
+  an empty table on a fresh database, and adds it to an already-roomed
+  database (real rooms/creature/sessions/care_events data, post-0003,
+  pre-0004) without altering any existing row.

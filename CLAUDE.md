@@ -24,12 +24,17 @@ apart if one of them ever needs editing.
 
 - SQLite (via Drizzle, `src/lib/db.ts`) holds the entire persistent state:
   `rooms`, `creature` (one row **per room**, `roomId` unique), `sessions`
-  (each with a `roomId` — null until a visitor joins or hosts), and
+  (each with a `roomId` — null until a visitor joins or hosts),
   `care_events` (each row's `roomId` captured at action time, independent
-  of the session's *current* room). Every creature read or write is scoped
-  by `roomId`, and that `roomId` is always derived from the trusted session
-  cookie server-side — never a client-supplied field (PROCESS.md, Decision
-  13; `docs/adr/0002-multi-room-identity-and-access-control.md`).
+  of the session's *current* room), and `log_events` (a bounded, durable
+  record of every care action and room event, success and rejection
+  alike — see PROCESS.md, Decision 13's log-retention follow-up; its
+  `actor` column is always a one-way hash of the session id, from
+  `src/lib/log.ts`'s `actorTag()`, never the raw id). Every creature read
+  or write is scoped by `roomId`, and that `roomId` is always derived from
+  the trusted session cookie server-side — never a client-supplied field
+  (PROCESS.md, Decision 13; `docs/adr/0002-multi-room-identity-and-access-
+  control.md`).
 - No feature may use an in-memory array, a module-level variable, or
   `localStorage` as its primary record. The in-memory SSE client set in
   `src/lib/sse.ts` is the one deliberate exception, and it is never a record

@@ -109,15 +109,24 @@ changed and why it isn't a quiet contradiction.
    backfill statement matches zero rows — a correct no-op, not a forced
    room.
 
-8. **Server-side logging that outlives the crit.** `src/lib/log.ts` writes
-   one structured JSON line to stdout for every room host/join/rejected-
-   join and every care action's outcome (success *and* rejection), scoped
-   by room and session. This is Fly's own log collector, read live via
-   `mise exec -- flyctl logs -a <repo>` — not a new database table — because
-   the crit's own demo depends on narrating who did what from exactly that
-   channel, and a rejection's attribution (who tried what, and why it
-   didn't go through) is the one thing `care_events` can never show, since
-   a rejection is never written there (CLAUDE.md).
+8. **Server-side logging, scoped by room and a non-reversible actor tag.**
+   `src/lib/log.ts` writes one structured JSON line to stdout for every
+   room host/join/rejected-join and every care action's outcome (success
+   *and* rejection), scoped by room and session. This is Fly's own log
+   collector, read live via `mise exec -- flyctl logs -a <repo>` during the
+   crit's own demo — not a new database table — because a rejection's
+   attribution (who tried what, and why it didn't go through) is the one
+   thing `care_events` can never show, since a rejection is never written
+   there (CLAUDE.md). Each line's `actor` field is a one-way SHA-256 digest
+   of the session id, never the raw id — an earlier draft logged the raw
+   value, which IS the session's entire bearer credential (Decision 7, no
+   password layer), making every log line a potential session-hijack
+   vector for anyone who could read it; found and fixed in ship-readiness
+   review (`spec/logging.test.ts` proves it directly against a real
+   server's captured stdout). **Retention is documented by Fly as roughly
+   7 days, but was not independently confirmed for this specific org/app**
+   — see PROCESS.md, Decision 13, for the full accounting and why stdout
+   logs alone should not be relied on past the crit week itself.
 
 ## Alternatives considered
 

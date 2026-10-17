@@ -340,11 +340,88 @@ app has of when the shared space was first visited.
 **Server-side logging, added alongside this.** `src/lib/log.ts` writes one
 structured line to stdout per room host/join/rejected-join and per care
 action's outcome (success *and* rejection) — the concrete gap this crit's
-spec names directly: logging that outlives the crit, read live from
-`mise exec -- flyctl logs -a <repo>` while narrating a two-profile demo. A
+spec names directly: a durable, server-side record of who did what. A
 rejection is still never written to `care_events` (unchanged from the rule
 above); this log is the one place a rejection's attribution is recorded at
-all.
+all. Each line carries `actor` — a stable, one-way SHA-256 digest of the
+session id, never the raw id itself — rather than the session's actual
+bearer credential; see the dedicated note below for why, and
+`spec/logging.test.ts` for the regression coverage.
+
+**Session credential never appears in logs.** `commons_session`'s cookie
+value IS the session's entire bearer credential (Decision 7 — no password
+layer at all): whoever holds it can act as that session, in whatever room
+it currently belongs to. An earlier draft of `log.ts` wrote that raw value
+straight into every log line — found and fixed during ship-readiness
+review, before this ever shipped, because anyone able to read these logs
+(course staff via `flyctl logs`, or anyone else with log/Fly access) could
+have lifted it and used it to impersonate that session. The fix:
+`actorTag()` hashes the session id (SHA-256, truncated to 10 hex
+characters) before it's ever logged — the SAME session always produces the
+SAME tag (attribution is preserved; a tutor can still tell "these five
+lines are the same visitor"), but the tag can never be reversed back into
+the credential that would let someone act as them.
+`spec/logging.test.ts` proves this directly against a server instance's
+REAL captured stdout, not just by reading `log.ts`'s source: a successful
+action, a rejected action, hosting, and joining all log an attributable,
+stable tag; the same session produces the same tag across multiple events;
+and the raw session id, confirmed minted for several real sessions in the
+test, never appears anywhere in the captured output.
+
+**What's actually verified about log retention, and what isn't.**
+"Outlives the crit" was initially asserted here without checking what Fly
+actually guarantees — corrected during ship-readiness review. What's
+confirmed, from Fly's own documentation
+(`docs.fly.io/monitoring/logs-api-options`,
+`docs.fly.io/monitoring/search-logs`) and direct inspection of this app's
+deployment:
+
+- Plain `flyctl logs --no-tail` (what this project's own `spec/README.md`
+  and the crit brief point to) returns only an in-memory buffer — observed
+  directly against the live deployment as exactly 100 lines, spanning
+  minutes, not days, even though the underlying machine had been running
+  for over a week. This is NOT a multi-day retention mechanism, regardless
+  of what the longer figure below applies to.
+- Fly's documentation describes a separate mechanism — a Grafana-based
+  "Search logs" feature (beta, backed by VictoriaLogs) at
+  `fly-metrics.net` — stating "we currently retain logs for 7 days." This
+  page states no paid-plan requirement and no additional setup beyond
+  using the dashboard link. It requires an interactive, SSO-authenticated
+  browser session to use; it could not be reached or confirmed working for
+  this specific org/app from this review (an unauthenticated or
+  token-based request to it redirects to a login page, and Fly's HTTP
+  Logs API — the mechanism the 7-day figure is actually describing —
+  returned 401 against this app with the project's own Fly API token, which
+  is consistent with that API being explicitly unofficial and unstable per
+  Fly's own docs, not necessarily evidence against the 7-day figure itself).
+  Community reports (Fly's own forum) independently corroborate "our
+  retention for app logs is 7d" as the current stated standard, with older
+  threads citing shorter windows (48h) from earlier periods — this history
+  is the reason the figure is treated as "documented, not independently
+  re-verified for this org" rather than settled fact.
+- No plan-tier distinction for this retention window is stated anywhere
+  found. One data point from this org's own Fly account metadata showed
+  `PaidPlan: false` on a nested record, which is suggestive but not
+  conclusive (that field was read from a sub-object, not a confirmed
+  top-level billing record).
+
+**Conclusion, stated plainly: retention is not independently confirmed for
+this org, only documented by Fly as ~7 days via a feature this review could
+not directly exercise.** The final project's assessment window extends
+roughly three weeks past this crit (2026-11-09) — well beyond even the
+documented 7-day figure. **stdout logs alone should not be relied on as
+the durable record for anything beyond the crit week itself.** `care_events`
+in SQLite remains the actually-durable, queryable record of every
+*successful* action for as long as the app's volume exists — which is the
+right fallback for anything beyond the crit's own live demo. If a durable,
+longer-lived record of *rejections* specifically (the one thing
+`care_events` never captures) turns out to matter for later assessment,
+the smallest addition would be a small, bounded `log_events` table
+(same shape as `care_events`, capped the same way per Decision 8) written
+alongside the existing stdout line rather than replacing it — no new
+external service, no new credential, same transaction. This has not been
+built: it's named here as the identified next step, pending a decision on
+whether it's actually needed, not implemented speculatively.
 
 **Why not rely on `creature.id` reuse or a single global row with a
 "current room" flag.** A room needs its own independent stats, activity

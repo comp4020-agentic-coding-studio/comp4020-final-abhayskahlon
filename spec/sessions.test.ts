@@ -7,6 +7,11 @@ import { describe, expect, inject, it } from "vitest";
 // the care history or the recorded last actor. Runs against the shared
 // running app (spec/global-setup.ts) — spec/persistence.test.ts covers
 // surviving an actual process restart, which needs its own instance.
+//
+// Since PROCESS.md, Decision 13: a creature only exists inside a hosted
+// room, so every helper below that needs to act or read Milo's state
+// hosts (or joins) a room first — a bare "fresh visitor with a cookie"
+// alone is no longer enough to reach any creature state.
 const baseUrl = inject("baseUrl");
 
 // Astro checks form POSTs carry a same-origin Origin header; browsers send
@@ -28,16 +33,41 @@ function extractSessionCookie(res: Response): string {
 }
 
 // A "fresh visitor": no cookie sent, so the server has to mint one. Every
-// call gets its own — never reuses another test's.
+// call gets its own — never reuses another test's. Has NO room yet — see
+// newRoomVisitor() below for the common case of a visitor who also needs
+// to act on a creature.
 async function newVisitor(): Promise<{ cookie: string }> {
   const res = await fetch(new URL("/", baseUrl));
   expect(res.status).toBe(200);
   return { cookie: extractSessionCookie(res) };
 }
 
-async function loadHome(cookie?: string): Promise<Document> {
-  const res = await fetch(new URL("/", baseUrl), cookie ? { headers: { cookie } } : undefined);
+async function loadHome(cookie: string): Promise<Document> {
+  const res = await fetch(new URL("/", baseUrl), { headers: { cookie } });
   return new JSDOM(await res.text()).window.document;
+}
+
+function extractRoomId(doc: Document): string {
+  const id = doc.querySelector(".intro strong")?.textContent;
+  if (!id) throw new Error("no room id found on the home page — expected to already be in a room");
+  return id;
+}
+
+// A fresh visitor who immediately hosts their own brand-new room — the
+// shape most of this file's tests actually need, now that a creature only
+// exists inside one.
+async function newRoomVisitor(): Promise<{ cookie: string }> {
+  const { cookie } = await newVisitor();
+  const res = await post("/api/rooms/host", cookie, new URLSearchParams({ name: "Test Visitor" }));
+  expect(res.status, "expected hosting a room to succeed").toBe(303);
+  return { cookie };
+}
+
+async function joinRoom(roomId: string): Promise<{ cookie: string }> {
+  const { cookie } = await newVisitor();
+  const res = await post("/api/rooms/join", cookie, new URLSearchParams({ name: "Test Visitor", roomCode: roomId }));
+  expect(res.status, "expected joining the room to succeed").toBe(303);
+  return { cookie };
 }
 
 function lastActorLabel(doc: Document): string | null {
@@ -67,13 +97,14 @@ describe("session identity", () => {
 
 describe("care history attribution", () => {
   it("attributes a successful action to the session that performed it", async () => {
-    const a = await newVisitor();
-    const b = await newVisitor();
+    const a = await newRoomVisitor();
+    const roomId = extractRoomId(await loadHome(a.cookie));
+    const b = await joinRoom(roomId); // same room as A, so they share one creature
     expect(a.cookie).not.toBe(b.cookie); // genuinely distinct sessions
 
     const resA = await post("/api/actions", a.cookie, new URLSearchParams({ action: "feed" }));
     expect(resA.status).toBe(303);
-    const afterA = await loadHome();
+    const afterA = await loadHome(a.cookie);
     const labelA = lastActorLabel(afterA);
     expect(labelA).toBeTruthy();
     expect(mostRecentHistoryActor(afterA)).toBe(labelA);
@@ -81,7 +112,7 @@ describe("care history attribution", () => {
 
     const resB = await post("/api/actions", b.cookie, new URLSearchParams({ action: "clean" }));
     expect(resB.status).toBe(303);
-    const afterB = await loadHome();
+    const afterB = await loadHome(b.cookie);
     const labelB = lastActorLabel(afterB);
     expect(labelB).toBeTruthy();
     expect(mostRecentHistoryActor(afterB)).toBe(labelB);
@@ -108,8 +139,8 @@ describe("care history attribution", () => {
 // *server* always gives it what it needs to get this right.
 describe("live-state refresh contract", () => {
   it("a successful action's new care event appears in the same rendered state as the updated stats", async () => {
-    const a = await newVisitor();
-    const before = await loadHome();
+    const a = await newRoomVisitor();
+    const before = await loadHome(a.cookie);
     const statsBefore = [...before.querySelectorAll(".stat-value")].map((el) => el.textContent);
 
     const res = await post("/api/actions", a.cookie, new URLSearchParams({ action: "clean" }));
@@ -118,7 +149,7 @@ describe("live-state refresh contract", () => {
     // This is exactly what the client's refreshLiveState() fetches: one
     // GET /, expected to carry the new history entry AND the changed
     // stats together, never one without the other.
-    const after = await loadHome();
+    const after = await loadHome(a.cookie);
     const statsAfter = [...after.querySelectorAll(".stat-value")].map((el) => el.textContent);
     expect(statsAfter, "cleanliness should now read 100").not.toEqual(statsBefore);
     expect(mostRecentHistoryActor(after)).toBe(lastActorLabel(after));
@@ -126,7 +157,7 @@ describe("live-state refresh contract", () => {
   });
 
   it("never serves an HTML document from a rejected action — the client's content-type guard relies on this", async () => {
-    const a = await newVisitor();
+    const a = await newRoomVisitor();
 
     // An action name the server itself rejects outright.
     const unknown = await post("/api/actions", a.cookie, new URLSearchParams({ action: "fly" }));
@@ -146,7 +177,7 @@ describe("live-state refresh contract", () => {
 
 describe("rejected actions", () => {
   it("never add a care_events row or change the recorded last action", async () => {
-    const a = await newVisitor();
+    const a = await newRoomVisitor();
 
     // Drain energy via `play` until the server itself rejects one —
     // deterministic regardless of what energy happens to be from earlier
@@ -159,14 +190,14 @@ describe("rejected actions", () => {
     }
     expect(rejected, "expected play to eventually be rejected once energy ran out").toBeDefined();
 
-    const before = await loadHome();
+    const before = await loadHome(a.cookie);
     const historyBefore = [...before.querySelectorAll(".history-list li")].map((li) => li.textContent);
     const lastActionBefore = before.querySelector(".last-action")?.textContent ?? null;
 
     const res = await post("/api/actions", a.cookie, new URLSearchParams({ action: "play" }));
     expect(res.status).toBe(409);
 
-    const after = await loadHome();
+    const after = await loadHome(a.cookie);
     const historyAfter = [...after.querySelectorAll(".history-list li")].map((li) => li.textContent);
     const lastActionAfter = after.querySelector(".last-action")?.textContent ?? null;
 

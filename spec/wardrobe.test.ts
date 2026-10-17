@@ -8,8 +8,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 // Covers the shared, cosmetic wardrobe: a change touches no stat and no
 // activity rule (so there is no rejection path to test beyond an unknown
-// slot/option), is visible to every session, and is recorded in Recent
-// care with accurate attribution — same as every other shared change here.
+// slot/option), is visible to every session in the same room, and is
+// recorded in Recent care with accurate attribution — same as every other
+// shared change here.
 //
 // Also regression coverage for a real lost-update bug found in review: the
 // original /api/wardrobe took a full {hat, neckwear} pair from the client,
@@ -29,6 +30,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 // wardrobe-test write landed as "Last action" in between sessions.test.ts's
 // own feed and its assertion. The same reasoning spec/concurrency.test.ts
 // and spec/persistence.test.ts already give for owning their own instance.
+//
+// Since PROCESS.md, Decision 13: a creature only exists inside a hosted
+// room — newVisitor() hosts a fresh room for the single-session test below,
+// and the concurrent test explicitly joins both sessions into the SAME
+// room so they genuinely share one creature's hat/neckwear.
 
 async function freePort(): Promise<number> {
   return new Promise((resolve) => {
@@ -81,7 +87,7 @@ function post(path: string, cookie: string, body: URLSearchParams): Promise<Resp
   });
 }
 
-async function newVisitor(): Promise<string> {
+async function freshSession(): Promise<string> {
   const res = await fetch(new URL("/", baseUrl));
   const setCookie = res.headers.get("set-cookie");
   const match = setCookie?.match(/commons_session=([^;]+)/);
@@ -89,9 +95,22 @@ async function newVisitor(): Promise<string> {
   return `commons_session=${match[1]}`;
 }
 
-async function loadHome(): Promise<Document> {
-  const res = await fetch(new URL("/", baseUrl));
+async function loadHome(cookie: string): Promise<Document> {
+  const res = await fetch(new URL("/", baseUrl), { headers: { cookie } });
   return new JSDOM(await res.text()).window.document;
+}
+
+function extractRoomId(doc: Document): string {
+  const id = doc.querySelector(".intro strong")?.textContent;
+  if (!id) throw new Error("no room id found on the home page — expected to already be in a room");
+  return id;
+}
+
+async function newVisitor(): Promise<string> {
+  const cookie = await freshSession();
+  const hostRes = await post("/api/rooms/host", cookie, new URLSearchParams({ name: "Test Visitor" }));
+  if (hostRes.status !== 303) throw new Error(`expected hosting a room to succeed, got ${hostRes.status}`);
+  return cookie;
 }
 
 describe("wardrobe", () => {
@@ -108,7 +127,7 @@ describe("wardrobe", () => {
     const neckRes = await post("/api/wardrobe", cookie, new URLSearchParams({ slot: "neckwear", value: "scarf" }));
     expect(neckRes.status).toBe(303);
 
-    const doc = await loadHome();
+    const doc = await loadHome(cookie);
     // Checked via element presence (never a bare .className string read —
     // SVG elements' `className` is not a plain string in real browsers,
     // only querySelector is reliable here) for the hat and neckwear
@@ -123,7 +142,7 @@ describe("wardrobe", () => {
     // never a rejection — and must leave the scarf exactly as it is.
     const off = await post("/api/wardrobe", cookie, new URLSearchParams({ slot: "hat", value: "" }));
     expect(off.status).toBe(303);
-    const afterOff = await loadHome();
+    const afterOff = await loadHome(cookie);
     expect(afterOff.querySelector(".milo-hat-top")).toBeNull();
     expect(afterOff.querySelector(".milo-scarf"), "removing the hat must not also remove the scarf").not.toBeNull();
     expect(afterOff.querySelector(".history-list")?.textContent).toContain("now wearing: Scarf");
@@ -131,7 +150,7 @@ describe("wardrobe", () => {
 
   it("rejects an unknown slot or an option outside that slot's vocabulary, changing nothing", async () => {
     const cookie = await newVisitor();
-    const before = await loadHome();
+    const before = await loadHome(cookie);
     const lastActionBefore = before.querySelector(".last-action")?.textContent ?? null;
 
     const badSlot = await post("/api/wardrobe", cookie, new URLSearchParams({ slot: "shoes", value: "" }));
@@ -145,14 +164,21 @@ describe("wardrobe", () => {
     const wrongSlot = await post("/api/wardrobe", cookie, new URLSearchParams({ slot: "hat", value: "scarf" }));
     expect(wrongSlot.status).toBe(400);
 
-    const after = await loadHome();
-    expect(after.querySelector(".last-action")?.textContent).toBe(lastActionBefore);
+    const after = await loadHome(cookie);
+    expect(after.querySelector(".last-action")?.textContent ?? null).toBe(lastActionBefore);
   });
 
   // performWardrobeChange (src/lib/db.ts) reads the untouched slot fresh
   // inside its own transaction specifically so this can never happen.
   it("two genuinely concurrent changes to different slots both survive — no lost update", async () => {
-    const [cookieA, cookieB] = await Promise.all([newVisitor(), newVisitor()]);
+    // Both sessions must be IN THE SAME ROOM for this to test what it
+    // claims to: A hosts, B joins A's room, rather than each getting its
+    // own independent creature.
+    const cookieA = await newVisitor();
+    const roomId = extractRoomId(await loadHome(cookieA));
+    const cookieB = await freshSession();
+    const joinRes = await post("/api/rooms/join", cookieB, new URLSearchParams({ name: "Test Visitor B", roomCode: roomId }));
+    expect(joinRes.status, "expected joining A's room to succeed").toBe(303);
     expect(cookieA).not.toBe(cookieB);
 
     // Fired together, not awaited one at a time: A sets the hat, B sets
@@ -164,7 +190,7 @@ describe("wardrobe", () => {
     expect(resA.status).toBe(303);
     expect(resB.status).toBe(303);
 
-    const doc = await loadHome();
+    const doc = await loadHome(cookieA);
     expect(doc.querySelector(".milo-hat-party"), "A's hat must not be lost to B's concurrent neckwear change").not.toBeNull();
     expect(doc.querySelector(".milo-bow-tie"), "B's neckwear must not be lost to A's concurrent hat change").not.toBeNull();
   });

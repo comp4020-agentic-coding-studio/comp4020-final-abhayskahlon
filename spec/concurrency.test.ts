@@ -21,6 +21,12 @@ import { type ActionName, type Stats, applyAction } from "../src/lib/creature";
 // is `applyAction`, the real pure transition function `src/lib/db.ts` itself
 // calls inside its transaction: it's the oracle this test checks the HTTP
 // path's result against, not a reimplementation of it.
+//
+// Since PROCESS.md, Decision 13: a creature only exists inside a hosted
+// room, so this file hosts ONE room in beforeAll and every "visitor" below
+// JOINS that same room — the four concurrent sessions still act on the one
+// shared creature this test's arithmetic depends on, exactly as before
+// rooms existed.
 
 async function freePort(): Promise<number> {
   return new Promise((resolve) => {
@@ -47,35 +53,14 @@ async function waitUntilUp(url: string): Promise<void> {
 
 let proc: ChildProcess;
 let baseUrl: string;
+let roomId: string;
 const dbDir = mkdtempSync(join(tmpdir(), "commons-concurrency-"));
-
-beforeAll(async () => {
-  const port = await freePort();
-  proc = spawn("node", ["./dist/server/entry.mjs"], {
-    env: { ...process.env, HOST: "127.0.0.1", PORT: String(port), DATABASE_PATH: join(dbDir, "test.db") },
-    stdio: "ignore",
-  });
-  baseUrl = `http://127.0.0.1:${port}`;
-  await waitUntilUp(baseUrl);
-});
-
-afterAll(() => {
-  proc?.kill();
-  rmSync(dbDir, { force: true, recursive: true });
-});
 
 function extractSessionCookie(res: Response): string {
   const setCookie = res.headers.get("set-cookie");
   const match = setCookie?.match(/commons_session=([^;]+)/);
   if (!match) throw new Error(`no commons_session cookie on the response (set-cookie: ${setCookie})`);
   return `commons_session=${match[1]}`;
-}
-
-// A fresh, independent session per call — never a shared cookie jar, so
-// each concurrent action below genuinely comes from its own identity.
-async function newVisitor(): Promise<string> {
-  const res = await fetch(new URL("/", baseUrl));
-  return extractSessionCookie(res);
 }
 
 function post(path: string, cookie: string, body: URLSearchParams): Promise<Response> {
@@ -87,10 +72,58 @@ function post(path: string, cookie: string, body: URLSearchParams): Promise<Resp
   });
 }
 
-async function loadHome(): Promise<Document> {
+// A fresh, independent session, with no room — the low-level building
+// block newVisitor() (below) and the room host both use. Never a shared
+// cookie jar, so each session genuinely comes from its own identity.
+async function freshSession(): Promise<string> {
   const res = await fetch(new URL("/", baseUrl));
+  return extractSessionCookie(res);
+}
+
+async function loadHome(cookie: string): Promise<Document> {
+  const res = await fetch(new URL("/", baseUrl), { headers: { cookie } });
   return new JSDOM(await res.text()).window.document;
 }
+
+function extractRoomId(doc: Document): string {
+  const id = doc.querySelector(".intro strong")?.textContent;
+  if (!id) throw new Error("no room id found on the home page — expected to already be in a room");
+  return id;
+}
+
+async function joinRoom(cookie: string, room: string): Promise<void> {
+  const res = await post("/api/rooms/join", cookie, new URLSearchParams({ name: "Test Visitor", roomCode: room }));
+  expect(res.status, "expected joining the shared test room to succeed").toBe(303);
+}
+
+// A fresh session that immediately joins THIS FILE's one shared room — the
+// replacement for "a fresh visitor on the one global creature" now that a
+// creature only exists inside a room (PROCESS.md, Decision 13).
+async function newVisitor(): Promise<string> {
+  const cookie = await freshSession();
+  await joinRoom(cookie, roomId);
+  return cookie;
+}
+
+beforeAll(async () => {
+  const port = await freePort();
+  proc = spawn("node", ["./dist/server/entry.mjs"], {
+    env: { ...process.env, HOST: "127.0.0.1", PORT: String(port), DATABASE_PATH: join(dbDir, "test.db") },
+    stdio: "ignore",
+  });
+  baseUrl = `http://127.0.0.1:${port}`;
+  await waitUntilUp(baseUrl);
+
+  const hostCookie = await freshSession();
+  const hostRes = await post("/api/rooms/host", hostCookie, new URLSearchParams({ name: "Test Host" }));
+  expect(hostRes.status).toBe(303);
+  roomId = extractRoomId(await loadHome(hostCookie));
+});
+
+afterAll(() => {
+  proc?.kill();
+  rmSync(dbDir, { force: true, recursive: true });
+});
 
 function parseStats(doc: Document): Stats {
   const [hunger, energy, happiness, cleanliness] = [...doc.querySelectorAll(".stat-value")].map((el) =>
@@ -130,8 +163,8 @@ function simulateSequential(order: ActionName[], initial: Stats): Stats {
 
 describe("concurrency", () => {
   it("applies concurrent actions from independent sessions with no lost updates", async () => {
-    // Matches db.ts's seedIfEmpty() default on a fresh database — this
-    // instance's database is fresh, so this is the known starting point.
+    // Matches db.ts's hostRoom() default on a freshly hosted room — this
+    // room's creature was just created, so this is the known starting point.
     const INITIAL_STATS: Stats = { hunger: 70, energy: 70, happiness: 70, cleanliness: 70 };
 
     // One of each action except `sleep` (kept out to avoid also permuting
@@ -140,9 +173,9 @@ describe("concurrency", () => {
     // initial stats above, regardless of what order they land in.
     const concurrentActions: ActionName[] = ["feed", "play", "walk", "clean"];
 
-    // Four independent sessions — distinguished by their actual cookies,
-    // never by their randomly-generated display labels (which may
-    // legitimately coincide; see src/lib/session.ts).
+    // Four independent sessions, all in the same room — distinguished by
+    // their actual cookies, never by their randomly-generated display
+    // labels (which may legitimately coincide; see src/lib/session.ts).
     const cookies = await Promise.all(concurrentActions.map(() => newVisitor()));
     const uniqueCookies = new Set(cookies);
     expect(uniqueCookies.size, "expected four genuinely distinct sessions").toBe(concurrentActions.length);
@@ -156,7 +189,7 @@ describe("concurrency", () => {
       expect(res.status, `expected ${concurrentActions[i]} to succeed`).toBe(303);
     }
 
-    const doc = await loadHome();
+    const doc = await loadHome(cookies[0]);
     const finalStats = parseStats(doc);
 
     // Every stat stays inside its bound regardless of what happened.

@@ -23,6 +23,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 // Own app instance (not the one spec/global-setup.ts shares) so
 // SLEEP_COOLDOWN_MS can be overridden short without affecting any other
 // spec file's timing.
+//
+// Since PROCESS.md, Decision 13: a creature only exists inside a hosted
+// room, so newVisitor() below hosts a fresh room for every new session —
+// each test's "one visitor" is also, trivially, that room's only member,
+// which is exactly what this file's single-session scenarios need.
 
 async function freePort(): Promise<number> {
   return new Promise((resolve) => {
@@ -87,7 +92,11 @@ async function newVisitor(): Promise<string> {
   const setCookie = res.headers.get("set-cookie");
   const match = setCookie?.match(/commons_session=([^;]+)/);
   if (!match) throw new Error(`no commons_session cookie on the response (set-cookie: ${setCookie})`);
-  return `commons_session=${match[1]}`;
+  const cookie = `commons_session=${match[1]}`;
+
+  const hostRes = await post("/api/rooms/host", cookie, new URLSearchParams({ name: "Test Visitor" }));
+  if (hostRes.status !== 303) throw new Error(`expected hosting a room to succeed, got ${hostRes.status}`);
+  return cookie;
 }
 
 describe("activity resolution consistency", () => {

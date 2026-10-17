@@ -7,9 +7,9 @@ import { afterAll, describe, expect, it } from "vitest";
 
 // This needs its own app instance, separate from the one spec/global-setup.ts
 // shares across every other spec file: it has to kill and restart the
-// server against the SAME database file to prove the care history and last
-// actor survive that — not just survive another request to an app that
-// never stopped running.
+// server against the SAME database file to prove the care history, last
+// actor, AND room membership survive that — not just survive another
+// request to an app that never stopped running.
 
 async function freePort(): Promise<number> {
   return new Promise((resolve) => {
@@ -61,12 +61,22 @@ describe("persistence across a restart", () => {
     rmSync(dbPath, { force: true, recursive: true });
   });
 
-  it("keeps the care history and last actor after the process restarts", async () => {
+  it("keeps room membership, the care history, and the last actor after the process restarts", async () => {
     const first = await startApp(dbPath);
     runningProc = first.proc;
 
     const visit = await fetch(new URL("/", first.baseUrl));
     const cookie = extractSessionCookie(visit);
+
+    // A creature only exists inside a hosted room (PROCESS.md, Decision
+    // 13) — host one before acting, the same as every other spec file.
+    const hostRes = await fetch(new URL("/api/rooms/host", first.baseUrl), {
+      method: "POST",
+      headers: { origin: first.baseUrl, cookie },
+      body: new URLSearchParams({ name: "Persistent Visitor" }),
+      redirect: "manual",
+    });
+    expect(hostRes.status).toBe(303);
 
     const act = await fetch(new URL("/api/actions", first.baseUrl), {
       method: "POST",
@@ -88,7 +98,11 @@ describe("persistence across a restart", () => {
     runningProc = second.proc;
 
     const afterRestart = await (await fetch(new URL("/", second.baseUrl), { headers: { cookie } })).text();
+    // Room membership survived (the returning cookie is still recognised as
+    // belonging to its room, so it sees Milo's page at all, not the entry
+    // form), and so did the care history it wrote before the restart.
     expect(afterRestart).toContain("fed Milo");
+    expect(afterRestart).not.toContain('id="entry-heading"');
 
     second.proc.kill();
   });

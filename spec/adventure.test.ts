@@ -15,6 +15,13 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 // performAdventure). Own instance, SLEEP_COOLDOWN_MS overridden short, so
 // the asleep-rejection half of this can be tested without sitting through
 // the real 8s default or disturbing any shared-instance test's timing.
+//
+// Since PROCESS.md, Decision 13: a creature only exists inside a hosted
+// room, so every "visitor" below hosts its own fresh room by default —
+// each single-session test's scenario is scoped to that one room's
+// creature, same as before rooms existed. The one test that needs two
+// sessions sharing a row explicitly joins them into the SAME room (see
+// below) rather than each hosting their own.
 
 async function freePort(): Promise<number> {
   return new Promise((resolve) => {
@@ -74,7 +81,7 @@ function post(path: string, cookie: string, body?: URLSearchParams): Promise<Res
   });
 }
 
-async function newVisitor(): Promise<string> {
+async function freshSession(): Promise<string> {
   const res = await fetch(new URL("/", baseUrl));
   const setCookie = res.headers.get("set-cookie");
   const match = setCookie?.match(/commons_session=([^;]+)/);
@@ -82,9 +89,24 @@ async function newVisitor(): Promise<string> {
   return `commons_session=${match[1]}`;
 }
 
-async function loadHome(): Promise<Document> {
-  const res = await fetch(new URL("/", baseUrl));
+async function loadHome(cookie: string): Promise<Document> {
+  const res = await fetch(new URL("/", baseUrl), { headers: { cookie } });
   return new JSDOM(await res.text()).window.document;
+}
+
+function extractRoomId(doc: Document): string {
+  const id = doc.querySelector(".intro strong")?.textContent;
+  if (!id) throw new Error("no room id found on the home page — expected to already be in a room");
+  return id;
+}
+
+// A fresh session that hosts its own brand-new room — the default shape
+// for every single-session test below.
+async function newVisitor(): Promise<string> {
+  const cookie = await freshSession();
+  const hostRes = await post("/api/rooms/host", cookie, new URLSearchParams({ name: "Test Visitor" }));
+  if (hostRes.status !== 303) throw new Error(`expected hosting a room to succeed, got ${hostRes.status}`);
+  return cookie;
 }
 
 function parseStats(doc: Document): number[] {
@@ -94,13 +116,13 @@ function parseStats(doc: Document): number[] {
 describe("adventure", () => {
   it("applies its exact deterministic deltas and records an attributed history entry", async () => {
     const cookie = await newVisitor();
-    const before = parseStats(await loadHome());
+    const before = parseStats(await loadHome(cookie));
     const [hungerBefore, energyBefore, happinessBefore, cleanlinessBefore] = before;
 
     const res = await post("/api/adventure", cookie);
     expect(res.status).toBe(303);
 
-    const doc = await loadHome();
+    const doc = await loadHome(cookie);
     const [hungerAfter, energyAfter, happinessAfter, cleanlinessAfter] = parseStats(doc);
 
     // hunger is untouched; the other three move by exactly the documented
@@ -124,14 +146,14 @@ describe("adventure", () => {
     // test here each run, so only proceed once asleep is actually confirmed.
     if (sleepRes.status !== 303) return;
 
-    const before = await loadHome();
+    const before = await loadHome(cookie);
     const historyBefore = [...before.querySelectorAll(".history-list li")].map((li) => li.textContent);
 
     const res = await post("/api/adventure", cookie);
     expect(res.status).toBe(409);
     expect(await res.text()).toBe("the creature is asleep right now");
 
-    const after = await loadHome();
+    const after = await loadHome(cookie);
     const historyAfter = [...after.querySelectorAll(".history-list li")].map((li) => li.textContent);
     expect(historyAfter).toEqual(historyBefore);
 
@@ -148,19 +170,19 @@ describe("adventure", () => {
   // as a genuinely new code path, it gets its own direct evidence rather
   // than relying on "it's the same pattern elsewhere" by inference alone.
   it("two genuinely concurrent adventures apply both deltas, in some real order — no lost or duplicated update", async () => {
-    const cookieOf = async (): Promise<string> => {
-      const res = await fetch(new URL("/", baseUrl));
-      const setCookie = res.headers.get("set-cookie");
-      const match = setCookie?.match(/commons_session=([^;]+)/);
-      if (!match) throw new Error("no commons_session cookie");
-      return `commons_session=${match[1]}`;
-    };
-
-    const before = parseStats(await loadHome());
-    const [hungerBefore, energyBefore, happinessBefore, cleanlinessBefore] = before;
-
-    const [cookieA, cookieB] = await Promise.all([cookieOf(), cookieOf()]);
+    // Both sessions must share ONE room's creature for this test's
+    // arithmetic to mean anything — A hosts, B joins A's room, rather than
+    // each hosting its own (which would give each its own independent,
+    // untouched-by-the-other creature).
+    const cookieA = await newVisitor();
+    const roomId = extractRoomId(await loadHome(cookieA));
+    const cookieB = await freshSession();
+    const joinRes = await post("/api/rooms/join", cookieB, new URLSearchParams({ name: "Test Visitor B", roomCode: roomId }));
+    expect(joinRes.status, "expected joining A's room to succeed").toBe(303);
     expect(cookieA).not.toBe(cookieB);
+
+    const before = parseStats(await loadHome(cookieA));
+    const [hungerBefore, energyBefore, happinessBefore, cleanlinessBefore] = before;
 
     // Fired together, not awaited one at a time — genuinely concurrent
     // requests against the one shared row, from two distinct sessions.
@@ -168,7 +190,7 @@ describe("adventure", () => {
     expect(resA.status).toBe(303);
     expect(resB.status).toBe(303);
 
-    const doc = await loadHome();
+    const doc = await loadHome(cookieA);
     const [hungerAfter, energyAfter, happinessAfter, cleanlinessAfter] = parseStats(doc);
 
     // The oracle: applying the same deterministic delta twice, in sequence

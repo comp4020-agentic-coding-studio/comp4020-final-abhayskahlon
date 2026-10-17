@@ -26,10 +26,38 @@ import { describe, expect, inject, it } from "vitest";
 // the source no longer contains the pattern that broke in production.
 const baseUrl = inject("baseUrl");
 
+// Since PROCESS.md, Decision 13: the five care-action forms only render
+// once a session is inside a room — an anonymous GET / now shows the entry
+// experience instead. Hosting a fresh room is the minimal way to reach the
+// page these tests actually need to inspect.
+function post(path: string, cookie: string, body: URLSearchParams): Promise<Response> {
+  return fetch(new URL(path, baseUrl), {
+    method: "POST",
+    headers: { origin: baseUrl, cookie },
+    body,
+    redirect: "manual",
+  });
+}
+
+function extractSessionCookie(res: Response): string {
+  const setCookie = res.headers.get("set-cookie");
+  const match = setCookie?.match(/commons_session=([^;]+)/);
+  if (!match) throw new Error(`no commons_session cookie on the response (set-cookie: ${setCookie})`);
+  return `commons_session=${match[1]}`;
+}
+
+async function loadRoomHome(): Promise<Document> {
+  const visit = await fetch(new URL("/", baseUrl));
+  const cookie = extractSessionCookie(visit);
+  const hostRes = await post("/api/rooms/host", cookie, new URLSearchParams({ name: "Test Visitor" }));
+  expect(hostRes.status, "expected hosting a room to succeed").toBe(303);
+  const res = await fetch(new URL("/", baseUrl), { headers: { cookie } });
+  return new JSDOM(await res.text()).window.document;
+}
+
 describe("action form URL resolution", () => {
   it("getAttribute(\"action\") resolves every action form to /api/actions", async () => {
-    const res = await fetch(new URL("/", baseUrl));
-    const doc = new JSDOM(await res.text()).window.document;
+    const doc = await loadRoomHome();
     const forms = [...doc.querySelectorAll<HTMLFormElement>(".action-form")];
 
     // One per action (feed/play/walk/clean/sleep) — all should resolve
@@ -44,8 +72,7 @@ describe("action form URL resolution", () => {
   });
 
   it("each action form still carries a control named \"action\" (the condition that caused the shadowing)", async () => {
-    const res = await fetch(new URL("/", baseUrl));
-    const doc = new JSDOM(await res.text()).window.document;
+    const doc = await loadRoomHome();
     const forms = [...doc.querySelectorAll<HTMLFormElement>(".action-form")];
     expect(forms.length).toBeGreaterThanOrEqual(5);
     for (const form of forms) {

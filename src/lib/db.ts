@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import Database from "better-sqlite3";
-import { desc, eq, min, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, notInArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import {
@@ -16,7 +16,9 @@ import {
   deriveHealth,
   resolveActivity,
 } from "./creature";
-import { type CareEvent, type Creature, type Session, careEvents, creature, sessions } from "./schema";
+import { logCareEvent, logRoomEvent } from "./log";
+import { generateRoomCode } from "./room";
+import { type CareEvent, type Creature, type Room, type Session, careEvents, creature, rooms, sessions } from "./schema";
 import { broadcastUpdate } from "./sse";
 
 // One SQLite file is the app's whole persistent state. fly.toml mounts a
@@ -42,43 +44,18 @@ type Handle = Pick<Db, "select" | "insert" | "update" | "delete">;
 // commit the migration it writes to drizzle/.
 migrate(db, { migrationsFolder: "./drizzle" });
 
-// There is exactly one creature, always at this id. Every query below reads
-// or writes this one row — see PROCESS.md for why one shared creature
-// (not one per user) is the whole point of COMMONS.
-const CREATURE_ID = 1;
-
 // A small, deliberate bound (PROCESS.md, Decision 8) — not unlimited, and
-// not an accident discovered later.
+// not an accident discovered later. Applies PER ROOM (Decision 13): each
+// room's own history is capped at this many rows, independent of every
+// other room's.
 const CARE_HISTORY_LIMIT = 50;
 // How many of that history the UI actually renders at once; the database
 // still keeps CARE_HISTORY_LIMIT regardless of this.
 const CARE_HISTORY_DISPLAY = 8;
 
-function seedIfEmpty(): void {
-  const existing = db.select({ id: creature.id }).from(creature).where(eq(creature.id, CREATURE_ID)).get();
-  if (existing !== undefined) return;
-  // A fresh creature starts comfortably in the middle of every need, not at
-  // the extremes — there's something for a first visitor to improve, but
-  // nothing urgent.
-  db.insert(creature)
-    .values({
-      id: CREATURE_ID,
-      hunger: 70,
-      energy: 70,
-      happiness: 70,
-      cleanliness: 70,
-      activity: "idle",
-      activityUntil: null,
-      lastAction: null,
-      lastActorSessionId: null,
-    })
-    .run();
-}
-seedIfEmpty();
-
-function readRow(handle: Handle): Creature {
-  const row = handle.select().from(creature).where(eq(creature.id, CREATURE_ID)).get();
-  if (!row) throw new Error("creature row missing after seed — this should never happen");
+function readRow(handle: Handle, roomId: string): Creature {
+  const row = handle.select().from(creature).where(eq(creature.roomId, roomId)).get();
+  if (!row) throw new Error(`creature row missing for room ${roomId} — hostRoom() always creates one`);
   return row;
 }
 
@@ -97,6 +74,109 @@ export function createSession(id: string, label: string): Session {
 
 export function touchSession(id: string): void {
   db.update(sessions).set({ lastSeenAt: sql`(datetime('now'))` }).where(eq(sessions.id, id)).run();
+}
+
+// ---- rooms: a dedicated shared space, each with its own creature ---------
+// See PROCESS.md, Decision 13 and docs/adr/0002-multi-room-identity-and-
+// access-control.md — the design this whole module now revolves around.
+// The room a mutating request acts on is ALWAYS this: session.roomId, read
+// from the trusted, httpOnly session cookie — never a client-supplied
+// field. hostRoom()/joinRoom() below are the only two places that value is
+// ever set.
+
+export interface SessionRoom {
+  id: string;
+  hostLabel: string | null;
+  createdAt: string;
+}
+
+// Reads straight off the Session the caller already has (getOrCreateSession
+// already fetched it) — no extra query for the common "does this visitor
+// have a room at all" check. Only queries further when they do.
+export function getSessionRoom(session: Session): SessionRoom | null {
+  if (!session.roomId) return null;
+  const row = db
+    .select({
+      id: rooms.id,
+      createdAt: rooms.createdAt,
+      hostLabel: sessions.label,
+    })
+    .from(rooms)
+    .leftJoin(sessions, eq(rooms.hostSessionId, sessions.id))
+    .where(eq(rooms.id, session.roomId))
+    .get();
+  // A session whose room_id points at a room that no longer resolves (it
+  // can't today — rooms are never deleted — but never trusted blindly
+  // either) is treated the same as having no room: fall through to the
+  // entry experience rather than crash on a stale reference.
+  if (!row) return null;
+  return { id: row.id, createdAt: row.createdAt, hostLabel: row.hostLabel ?? null };
+}
+
+function findRoom(handle: Handle, id: string): Room | undefined {
+  return handle.select().from(rooms).where(eq(rooms.id, id)).get();
+}
+
+// Tries a fresh random code, inside the given transaction, until it finds
+// one not already taken. The alphabet (31 chars, 6 long — src/lib/room.ts)
+// makes a collision astronomically unlikely, but "unlikely" is not "never"
+// — this is what makes the guarantee actual rather than assumed. A bound of
+// 20 attempts is generous; exhausting it would mean something is
+// structurally wrong (e.g. the alphabet shrank drastically), not ordinary
+// bad luck, so it throws rather than silently looping forever.
+function generateUniqueRoomCode(tx: Handle): string {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const code = generateRoomCode();
+    if (!findRoom(tx, code)) return code;
+  }
+  throw new Error("could not generate a unique room code after 20 attempts");
+}
+
+// A fresh creature starts comfortably in the middle of every need, not at
+// the extremes — there's something for a room's first visitor to improve,
+// but nothing urgent. Matches the defaults the old singleton seed used.
+function defaultCreatureStats() {
+  return { hunger: 70, energy: 70, happiness: 70, cleanliness: 70, activity: "idle" as const, activityUntil: null };
+}
+
+// Creates a brand-new room and its creature together, in one transaction,
+// and makes `session` that room's host (attribution only — PROCESS.md,
+// Decision 13: no powers an ordinary member lacks). Matches joinRoom()'s
+// "joining/hosting always overwrites" rule: a session that already belonged
+// to another room simply moves to this new one.
+export function hostRoom(session: Session, label: string): Room {
+  const room = db.transaction((tx) => {
+    const id = generateUniqueRoomCode(tx);
+    const newRoom = tx.insert(rooms).values({ id, hostSessionId: session.id }).returning().get();
+    tx.insert(creature).values({ roomId: id, ...defaultCreatureStats() }).run();
+    tx.update(sessions).set({ label, roomId: id }).where(eq(sessions.id, session.id)).run();
+    return newRoom;
+  });
+  logRoomEvent({ roomId: room.id, sessionId: session.id, sessionLabel: label, type: "room_hosted" });
+  return room;
+}
+
+export type RoomJoinRejection = { reason: string };
+
+// Validates the room actually exists (the one real, server-side check this
+// path makes — see docs/adr/0002) before moving `session` into it. `roomId`
+// is assumed already format-validated and normalized by the caller (src/
+// pages/api/rooms/join.ts), the same division of labour api/actions.ts uses
+// for action names: route validates shape, this validates against the
+// database.
+export function joinRoom(session: Session, label: string, roomId: string): Room | RoomJoinRejection {
+  const room = db.transaction((tx) => {
+    const existing = findRoom(tx, roomId);
+    if (!existing) return { reason: "no room with that code" };
+    tx.update(sessions).set({ label, roomId }).where(eq(sessions.id, session.id)).run();
+    return existing;
+  });
+  if ("reason" in room) {
+    logRoomEvent({ roomId: null, sessionId: session.id, sessionLabel: label, type: "room_join_rejected", attemptedCode: roomId, reason: room.reason });
+    return room;
+  }
+  logRoomEvent({ roomId: room.id, sessionId: session.id, sessionLabel: label, type: "room_joined" });
+  return room;
 }
 
 // ---- creature state, including the (joined) view the UI renders ----------
@@ -121,7 +201,7 @@ export interface CreatureState {
   neckwear: NeckwearOption | null;
 }
 
-function listRecentCareHistory(handle: Handle, limit: number): CareHistoryEntry[] {
+function listRecentCareHistory(handle: Handle, roomId: string, limit: number): CareHistoryEntry[] {
   return handle
     .select({
       action: careEvents.action,
@@ -131,6 +211,7 @@ function listRecentCareHistory(handle: Handle, limit: number): CareHistoryEntry[
     })
     .from(careEvents)
     .innerJoin(sessions, eq(careEvents.sessionId, sessions.id))
+    .where(eq(careEvents.roomId, roomId))
     .orderBy(desc(careEvents.id))
     .limit(limit)
     .all();
@@ -165,12 +246,12 @@ function resolveAndSync(handle: Handle, row: Creature, now: Date): Creature {
   handle
     .update(creature)
     .set({ activity: resolved.activity, activityUntil: resolved.activityUntil })
-    .where(eq(creature.id, CREATURE_ID))
+    .where(eq(creature.id, row.id))
     .run();
   return { ...row, activity: resolved.activity, activityUntil: resolved.activityUntil };
 }
 
-function toState(handle: Handle, row: Creature): CreatureState {
+function toState(handle: Handle, row: Creature, roomId: string): CreatureState {
   const resolvedRow = resolveAndSync(handle, row, new Date());
   const lastActor = resolvedRow.lastActorSessionId
     ? handle
@@ -187,7 +268,7 @@ function toState(handle: Handle, row: Creature): CreatureState {
     lastAction: resolvedRow.lastAction,
     lastActorLabel: lastActor?.label ?? null,
     updatedAt: resolvedRow.updatedAt,
-    history: listRecentCareHistory(handle, CARE_HISTORY_DISPLAY),
+    history: listRecentCareHistory(handle, roomId, CARE_HISTORY_DISPLAY),
     // Stored as plain `text` (nullable) in schema.ts; the vocabulary that
     // makes these HatOption/NeckwearOption is only ever written through
     // performWardrobeChange()'s validation below, so a cast here is safe —
@@ -197,37 +278,35 @@ function toState(handle: Handle, row: Creature): CreatureState {
   };
 }
 
-// Read-only, no transaction needed: the earliest a session row was ever
-// created. Stable once set (sessions.createdAt is written once at insert
-// and never touched again — only lastSeenAt is), and never empty by the
-// time anything asks, since getOrCreateSession() has already run for
-// whoever's asking before this is ever called (src/pages/index.astro).
-// Examined, not assumed: no existing field on `creature` itself is stable
-// (updatedAt changes on every mutation), so this reuses `sessions` rather
-// than adding a new column for Milo's age.
-export function getMiloAge(): string | null {
-  const row = db.select({ first: min(sessions.createdAt) }).from(sessions).get();
-  return row?.first ?? null;
-}
-
 // Always a fresh read from SQLite — never from anything held in a variable
 // across requests (see CLAUDE.md).
-export function getCreatureState(): CreatureState {
-  return toState(db, readRow(db));
+export function getCreatureState(roomId: string): CreatureState {
+  return toState(db, readRow(db, roomId), roomId);
 }
 
-// Deletes every care_events row beyond the most recent CARE_HISTORY_LIMIT.
-// Called after every successful action, inside the same transaction, so the
-// table never grows past the bound PROCESS.md Decision 8 commits to.
-function pruneCareHistory(handle: Handle): void {
-  const keep = handle.select({ id: careEvents.id }).from(careEvents).orderBy(desc(careEvents.id)).limit(CARE_HISTORY_LIMIT).all();
+// Deletes every care_events row for THIS ROOM beyond the most recent
+// CARE_HISTORY_LIMIT — each room's history is capped independently, never
+// against the table's total row count. Called after every successful
+// action, inside the same transaction, so no room's history ever grows
+// past the bound PROCESS.md Decision 8 commits to.
+function pruneCareHistory(handle: Handle, roomId: string): void {
+  const keep = handle
+    .select({ id: careEvents.id })
+    .from(careEvents)
+    .where(eq(careEvents.roomId, roomId))
+    .orderBy(desc(careEvents.id))
+    .limit(CARE_HISTORY_LIMIT)
+    .all();
   if (keep.length < CARE_HISTORY_LIMIT) return; // nothing to prune yet
   handle
     .delete(careEvents)
     .where(
-      notInArray(
-        careEvents.id,
-        keep.map((row) => row.id),
+      and(
+        eq(careEvents.roomId, roomId),
+        notInArray(
+          careEvents.id,
+          keep.map((row) => row.id),
+        ),
       ),
     )
     .run();
@@ -246,9 +325,15 @@ export type ActionRejection = { reason: string };
 // one exception is resolveAndSync's own housekeeping write, which happens
 // regardless of this action's outcome because it isn't this action's
 // effect at all.
-export function performAction(action: ActionName, sessionId: string): CreatureState | ActionRejection {
+//
+// `roomId` is the session's OWN room (src/pages/api/actions.ts derives it
+// from the trusted session cookie, never from anything the client sends) —
+// readRow() below can only ever read or write that one room's creature, so
+// there is no code path here through which this action could touch any
+// other room's state.
+export function performAction(action: ActionName, session: Session, roomId: string): CreatureState | ActionRejection {
   const result = db.transaction((tx) => {
-    const row = readRow(tx);
+    const row = readRow(tx, roomId);
     const now = new Date();
     const resolvedRow = resolveAndSync(tx, row, now);
     const resolved = {
@@ -265,24 +350,35 @@ export function performAction(action: ActionName, sessionId: string): CreatureSt
         activity: outcome.result.activity,
         activityUntil: outcome.result.activityUntil,
         lastAction: action,
-        lastActorSessionId: sessionId,
+        lastActorSessionId: session.id,
         updatedAt: sql`(datetime('now'))`,
       })
-      .where(eq(creature.id, CREATURE_ID))
+      .where(eq(creature.id, row.id))
       .run();
 
-    tx.insert(careEvents).values({ sessionId, action, summary: outcome.result.summary }).run();
-    pruneCareHistory(tx);
+    tx.insert(careEvents).values({ sessionId: session.id, roomId, action, summary: outcome.result.summary }).run();
+    pruneCareHistory(tx, roomId);
 
-    return toState(tx, readRow(tx));
+    return toState(tx, readRow(tx, roomId), roomId);
+  });
+
+  const outcome = "reason" in result ? "rejected" : "success";
+  logCareEvent({
+    roomId,
+    sessionId: session.id,
+    sessionLabel: session.label,
+    action,
+    outcome,
+    ...("reason" in result ? { reason: result.reason } : {}),
   });
 
   // Broadcast only after the transaction has actually committed, and only
   // on success — a rejection never reaches here, so it never produces an
   // update event (src/lib/sse.ts). This runs outside the transaction
   // deliberately: it's a side effect, not a database write, and it must
-  // never run for a mutation that could still be rolled back.
-  if (!("reason" in result)) broadcastUpdate();
+  // never run for a mutation that could still be rolled back. Scoped to
+  // THIS room only — every other room's open connections are untouched.
+  if (!("reason" in result)) broadcastUpdate(roomId);
 
   return result;
 }
@@ -311,9 +407,9 @@ export type WardrobeSlot = "hat" | "neckwear";
 // fresh read inside the transaction" principle performAction already
 // follows for stats (PROCESS.md, Decision 4), just not followed here
 // originally.
-export function performWardrobeChange(slot: WardrobeSlot, value: string | null, sessionId: string): CreatureState {
+export function performWardrobeChange(slot: WardrobeSlot, value: string | null, session: Session, roomId: string): CreatureState {
   const result = db.transaction((tx) => {
-    const row = readRow(tx);
+    const row = readRow(tx, roomId);
     // `value` is validated against the right vocabulary for `slot` by the
     // caller (api/wardrobe.ts's isHatOption/isNeckwearOption) before this
     // ever runs — the casts here just reflect that already-checked fact,
@@ -326,21 +422,22 @@ export function performWardrobeChange(slot: WardrobeSlot, value: string | null, 
         hat,
         neckwear,
         lastAction: "wardrobe",
-        lastActorSessionId: sessionId,
+        lastActorSessionId: session.id,
         updatedAt: sql`(datetime('now'))`,
       })
-      .where(eq(creature.id, CREATURE_ID))
+      .where(eq(creature.id, row.id))
       .run();
 
     tx.insert(careEvents)
-      .values({ sessionId, action: "wardrobe", summary: describeWardrobe(hat, neckwear) })
+      .values({ sessionId: session.id, roomId, action: "wardrobe", summary: describeWardrobe(hat, neckwear) })
       .run();
-    pruneCareHistory(tx);
+    pruneCareHistory(tx, roomId);
 
-    return toState(tx, readRow(tx));
+    return toState(tx, readRow(tx, roomId), roomId);
   });
 
-  broadcastUpdate();
+  logCareEvent({ roomId, sessionId: session.id, sessionLabel: session.label, action: "wardrobe", outcome: "success" });
+  broadcastUpdate(roomId);
   return result;
 }
 
@@ -349,9 +446,9 @@ export function performWardrobeChange(slot: WardrobeSlot, value: string | null, 
 // record, prune, return the fresh state — all inside one transaction, no
 // `await` in between, for the same concurrency reason as every other
 // mutation here (PROCESS.md, Decision 4).
-export function performAdventure(sessionId: string): CreatureState | ActionRejection {
+export function performAdventure(session: Session, roomId: string): CreatureState | ActionRejection {
   const result = db.transaction((tx) => {
-    const row = readRow(tx);
+    const row = readRow(tx, roomId);
     const now = new Date();
     const resolvedRow = resolveAndSync(tx, row, now);
     const resolved = {
@@ -368,20 +465,30 @@ export function performAdventure(sessionId: string): CreatureState | ActionRejec
         activity: outcome.result.activity,
         activityUntil: outcome.result.activityUntil,
         lastAction: "adventure",
-        lastActorSessionId: sessionId,
+        lastActorSessionId: session.id,
         updatedAt: sql`(datetime('now'))`,
       })
-      .where(eq(creature.id, CREATURE_ID))
+      .where(eq(creature.id, row.id))
       .run();
 
-    tx.insert(careEvents).values({ sessionId, action: "adventure", summary: outcome.result.summary }).run();
-    pruneCareHistory(tx);
+    tx.insert(careEvents).values({ sessionId: session.id, roomId, action: "adventure", summary: outcome.result.summary }).run();
+    pruneCareHistory(tx, roomId);
 
-    return toState(tx, readRow(tx));
+    return toState(tx, readRow(tx, roomId), roomId);
   });
 
-  if (!("reason" in result)) broadcastUpdate();
+  const outcome = "reason" in result ? "rejected" : "success";
+  logCareEvent({
+    roomId,
+    sessionId: session.id,
+    sessionLabel: session.label,
+    action: "adventure",
+    outcome,
+    ...("reason" in result ? { reason: result.reason } : {}),
+  });
+
+  if (!("reason" in result)) broadcastUpdate(roomId);
   return result;
 }
 
-export type { CareEvent, Session };
+export type { CareEvent, Room, Session };

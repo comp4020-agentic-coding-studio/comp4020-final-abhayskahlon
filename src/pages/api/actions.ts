@@ -16,6 +16,15 @@ function isActionName(value: string): value is ActionName {
 // a 409: understood, but not applicable right now — never a silent no-op,
 // never coerced into something valid, and never recorded in the care
 // history (performAction only inserts a care_events row on success).
+//
+// The room this action applies to is ALWAYS session.roomId — read from the
+// trusted, httpOnly session cookie, never from the request body or any
+// other client-supplied value (docs/adr/0002-multi-room-identity-and-
+// access-control.md). There is no "roomId" form field for a client to set:
+// a visitor literally cannot ask this route to act on a room other than
+// their own. A session with no room yet gets 403, not a crash or a silent
+// no-op — the normal page flow never renders these forms before a room is
+// joined, so this only matters for a direct request.
 export const POST: APIRoute = async ({ request, redirect, cookies }) => {
   const form = await request.formData();
   const action = String(form.get("action") ?? "");
@@ -25,7 +34,11 @@ export const POST: APIRoute = async ({ request, redirect, cookies }) => {
   }
 
   const session = getOrCreateSession(cookies);
-  const outcome = performAction(action, session.id);
+  if (!session.roomId) {
+    return new Response("join or host a room first", { status: 403 });
+  }
+
+  const outcome = performAction(action, session, session.roomId);
   if ("reason" in outcome) {
     return new Response(outcome.reason, { status: 409 });
   }

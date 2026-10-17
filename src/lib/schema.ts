@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { int, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { type AnySQLiteColumn, int, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 // The schema is ground truth. To change it: edit here, run
 // `pnpm db:generate` to turn the diff into a migration under drizzle/, and
@@ -19,7 +19,13 @@ import { int, sqliteTable, text } from "drizzle-orm/sqlite-core";
 // pre-rooms history (`id = "COMMONS"`) never had a recorded host.
 export const rooms = sqliteTable("rooms", {
   id: text().primaryKey(),
-  hostSessionId: text("host_session_id").references(() => sessions.id),
+  // `rooms` and `sessions` reference each other (a room has a host session,
+  // a session has a current room) — TypeScript can't infer either table's
+  // type while it's still resolving the other's, so this one side of the
+  // cycle needs an explicit column type annotation (AnySQLiteColumn) to
+  // break it; the other three cross-references below resolve fine once
+  // `rooms`'s own type is no longer circular.
+  hostSessionId: text("host_session_id").references((): AnySQLiteColumn => sessions.id),
   createdAt: text("created_at")
     .notNull()
     .default(sql`(datetime('now'))`),

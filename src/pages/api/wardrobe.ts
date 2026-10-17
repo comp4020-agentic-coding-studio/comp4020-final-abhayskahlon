@@ -18,6 +18,9 @@ function isWardrobeSlot(value: string): value is WardrobeSlot {
 // Takes exactly ONE slot and its new value, never a full {hat, neckwear}
 // snapshot — see performWardrobeChange's comment (src/lib/db.ts) for the
 // real lost-update bug that shape caused and why this one doesn't.
+//
+// The room is always session.roomId, same as api/actions.ts — never a
+// client-supplied field (docs/adr/0002).
 export const POST: APIRoute = async ({ request, redirect, cookies }) => {
   const form = await request.formData();
   const slot = String(form.get("slot") ?? "");
@@ -33,7 +36,11 @@ export const POST: APIRoute = async ({ request, redirect, cookies }) => {
   }
 
   const session = getOrCreateSession(cookies);
-  performWardrobeChange(slot, value, session.id);
+  if (!session.roomId) {
+    return new Response("join or host a room first", { status: 403 });
+  }
+
+  performWardrobeChange(slot, value, session, session.roomId);
 
   return redirect("/", 303);
 };

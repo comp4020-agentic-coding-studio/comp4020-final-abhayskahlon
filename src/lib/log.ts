@@ -51,7 +51,12 @@ import { createHash } from "node:crypto";
 // affect which log LINE a tag is grouped with, never any actual data in
 // SQLite (care_events still carries the real, unhashed session_id for
 // genuine attribution — only this stdout channel is affected).
-function actorTag(sessionId: string): string {
+// Exported so src/lib/db.ts's durable log_events table (PROCESS.md,
+// Decision 13's log-retention follow-up) can tag its own rows the exact
+// same way, rather than a second hand-written copy of this logic that
+// could drift from this one — there is exactly one definition of "how a
+// session id becomes a non-reversible actor tag" in this codebase.
+export function actorTag(sessionId: string): string {
   return createHash("sha256").update(sessionId).digest("hex").slice(0, 10);
 }
 

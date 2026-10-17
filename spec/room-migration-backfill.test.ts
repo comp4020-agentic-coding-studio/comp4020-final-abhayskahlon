@@ -78,9 +78,20 @@ describe("room migration backfill (legacy single-creature data)", () => {
     const journal = JSON.parse(readFileSync(join(migrationsDir, "meta", "_journal.json"), "utf8")) as {
       version: string;
       dialect: string;
-      entries: { idx: number; tag: string }[];
+      entries: { idx: number; tag: string; when: number }[];
     };
-    const preRoomsEntries = journal.entries.filter((e) => !e.tag.includes(ROOMS_MIGRATION_TAG));
+    const roomsEntry = journal.entries.find((e) => e.tag.includes(ROOMS_MIGRATION_TAG));
+    if (!roomsEntry) throw new Error(`could not find the rooms migration (tag containing "${ROOMS_MIGRATION_TAG}") in the journal`);
+    // Strictly BEFORE the rooms migration's own timestamp — not just "not
+    // named like it." drizzle-kit's migrator tracks "already applied"
+    // against the single most recent migration's `when` timestamp, not
+    // against which specific migrations ran; a later migration (e.g. one
+    // added after rooms, like the log_events migration) left in this set
+    // would push that watermark past the rooms migration's own timestamp,
+    // causing the real migrator to skip 0003 entirely on the full pass
+    // below — a real bug this exact distinction (name vs. position) was
+    // written to avoid, found while adding the log_events migration.
+    const preRoomsEntries = journal.entries.filter((e) => e.when < roomsEntry.when);
     expect(preRoomsEntries.length, "expected at least one pre-rooms migration to replay").toBeGreaterThan(0);
 
     const preRoomsDir = join(workDir, "drizzle-pre-rooms");

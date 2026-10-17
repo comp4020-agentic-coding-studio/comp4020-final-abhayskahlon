@@ -131,7 +131,53 @@ export const careEvents = sqliteTable("care_events", {
     .default(sql`(datetime('now'))`),
 });
 
+// A bounded, durable, server-only event log — successful AND rejected care
+// actions, room hosting/joining/rejected-joining alike. See PROCESS.md,
+// Decision 13's log-retention note: Fly's own stdout log retention could
+// not be independently confirmed for this org (documented by Fly as
+// roughly 7 days, but that mechanism couldn't be directly exercised from
+// this review), and the final project's assessment window extends well
+// past even that documented figure. This table is the smallest viable
+// durable fallback named there, now built — not a replacement for
+// src/lib/log.ts's stdout channel (still read live during the crit demo
+// via `flyctl logs`), but a second, durable copy of the SAME events that
+// survives past whatever Fly's actual retention turns out to be.
+//
+// `actor` is a stable, NON-REVERSIBLE digest of the session id (the exact
+// same `actorTag()` function src/lib/log.ts already uses for stdout) —
+// NEVER the raw session id itself, which is that session's entire bearer
+// credential (PROCESS.md, Decision 7). Writing the raw id here would
+// reintroduce, in a durable table this time, the exact credential-exposure
+// bug already found and fixed in the stdout channel.
+//
+// Bounded per room (`LOG_EVENTS_LIMIT` in src/lib/db.ts), the same
+// prune-on-insert pattern `care_events` already uses (Decision 8) — a
+// durable log that could grow forever would defeat its own purpose by
+// eventually threatening the one-volume deployment's disk, so "durable"
+// here means "survives longer than Fly's log retention," not "unbounded."
+export const logEvents = sqliteTable("log_events", {
+  id: int().primaryKey({ autoIncrement: true }),
+  // Nullable: a rejected room-join whose code never resolved to any room
+  // has no real room to attribute to — the same nullable case
+  // src/lib/log.ts's RoomLogEvent already has for the stdout channel.
+  roomId: text("room_id").references(() => rooms.id),
+  actor: text().notNull(),
+  // "care_action" | "room_event" — mirrors the two event families
+  // src/lib/log.ts already separates (CareLogEvent vs RoomLogEvent).
+  eventType: text("event_type").notNull(),
+  // e.g. "feed"/"sleep"/"wardrobe"/"adventure" for care_action,
+  // "room_hosted"/"room_joined"/"room_join_rejected" for room_event — the
+  // same vocabulary the stdout channel already uses.
+  action: text().notNull(),
+  outcome: text().notNull(), // "success" | "rejected"
+  reason: text(), // only ever set when outcome is "rejected"
+  createdAt: text("created_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
+});
+
 export type Room = typeof rooms.$inferSelect;
 export type Creature = typeof creature.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
 export type CareEvent = typeof careEvents.$inferSelect;
+export type LogEvent = typeof logEvents.$inferSelect;

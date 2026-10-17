@@ -16,9 +16,20 @@ import {
   deriveHealth,
   resolveActivity,
 } from "./creature";
-import { logCareEvent, logRoomEvent } from "./log";
+import { actorTag, logCareEvent, logRoomEvent } from "./log";
 import { generateRoomCode } from "./room";
-import { type CareEvent, type Creature, type Room, type Session, careEvents, creature, rooms, sessions } from "./schema";
+import {
+  type CareEvent,
+  type Creature,
+  type LogEvent,
+  type Room,
+  type Session,
+  careEvents,
+  creature,
+  logEvents,
+  rooms,
+  sessions,
+} from "./schema";
 import { broadcastUpdate } from "./sse";
 
 // One SQLite file is the app's whole persistent state. fly.toml mounts a
@@ -53,10 +64,143 @@ const CARE_HISTORY_LIMIT = 50;
 // still keeps CARE_HISTORY_LIMIT regardless of this.
 const CARE_HISTORY_DISPLAY = 8;
 
+// Same bounded-per-room pattern as CARE_HISTORY_LIMIT, for the durable
+// log_events table (PROCESS.md, Decision 13's log-retention follow-up).
+// Deliberately larger than CARE_HISTORY_LIMIT: this table is the one
+// durable record of REJECTIONS too (care_events never stores those), so a
+// room with a lot of rejected attempts shouldn't crowd out its successful
+// history's own, separate bound. Still bounded, not unlimited — a durable
+// log that could grow forever would eventually threaten the one-volume
+// deployment's disk, defeating its own purpose.
+const LOG_EVENTS_LIMIT = 200;
+
 function readRow(handle: Handle, roomId: string): Creature {
   const row = handle.select().from(creature).where(eq(creature.roomId, roomId)).get();
   if (!row) throw new Error(`creature row missing for room ${roomId} — hostRoom() always creates one`);
   return row;
+}
+
+// ---- durable event log: a bounded, queryable fallback for log.ts's stdout
+// channel, whose actual retention could not be confirmed (PROCESS.md,
+// Decision 13) ---------------------------------------------------------
+
+// Narrows the schema's plain `text` columns (eventType/outcome) to the
+// fixed, small vocabularies this module actually ever writes — the column
+// itself stays `text` in schema.ts (matching every other enum-shaped
+// column in this codebase, e.g. creature.activity), this is just the
+// application-level contract on top of it.
+export type LogEventType = "care_action" | "room_event";
+export type LogEventOutcome = "success" | "rejected";
+export interface LogEventRecord extends Omit<LogEvent, "eventType" | "outcome"> {
+  eventType: LogEventType;
+  outcome: LogEventOutcome;
+}
+
+function pruneLogEvents(handle: Handle, roomId: string): void {
+  const keep = handle
+    .select({ id: logEvents.id })
+    .from(logEvents)
+    .where(eq(logEvents.roomId, roomId))
+    .orderBy(desc(logEvents.id))
+    .limit(LOG_EVENTS_LIMIT)
+    .all();
+  if (keep.length < LOG_EVENTS_LIMIT) return; // nothing to prune yet
+  handle
+    .delete(logEvents)
+    .where(
+      and(
+        eq(logEvents.roomId, roomId),
+        notInArray(
+          logEvents.id,
+          keep.map((row) => row.id),
+        ),
+      ),
+    )
+    .run();
+}
+
+// The ONE place a durable log_events row is ever written. Deliberately a
+// PLAIN statement, never wrapped in the caller's own db.transaction() —
+// this is what makes a rejected action's log row durable even though the
+// action's own mutation transaction rolled back: by the time this runs,
+// that transaction has already either committed or rolled back, and this
+// write is unconditional either way (see performAction/performAdventure
+// below, which call this with the SAME `outcome`/`reason` passed to
+// logCareEvent(), after their own `db.transaction(...)` call has already
+// returned). `actor` is ALWAYS the hashed tag (src/lib/log.ts's
+// actorTag()), never the raw session id — the identical non-reversibility
+// guarantee the stdout channel already has, reused rather than
+// reimplemented, so there is exactly one place in this codebase that
+// decides how a session id becomes a loggable actor.
+//
+// Explicit failure handling (requirement: never let a logging failure
+// silently turn a rejection into an apparent success, or vice versa): this
+// function's own insert can itself throw (disk full, corrupted database,
+// etc.) — every caller (performAction/performWardrobeChange/
+// performAdventure/hostRoom/joinRoom, below) only ever calls this AFTER
+// its own `db.transaction(...)` has already committed or rolled back and
+// `result` is already the final, independently-decided outcome; this call
+// is always wrapped as safeWriteLogEvent() (next function), which catches
+// its own failure, so a failure here can only ever cause a missing
+// audit-log ROW — it can never change what the caller already computed or
+// already returns to the HTTP layer. The failure is itself logged to
+// stderr (the one console.error in this codebase, deliberately distinct
+// from log.ts's console.log lines) so a durable-logging outage is at
+// least visible in the same stdout/stderr stream already being watched.
+function writeLogEvent(
+  roomId: string | null,
+  sessionId: string,
+  eventType: LogEventRecord["eventType"],
+  action: string,
+  outcome: LogEventRecord["outcome"],
+  reason?: string,
+): void {
+  db.insert(logEvents)
+    .values({ roomId, actor: actorTag(sessionId), eventType, action, outcome, reason: reason ?? null })
+    .run();
+  // Pruning only makes sense once we know which room's bound to check —
+  // a null roomId (a join rejected before any room was ever found) has no
+  // per-room bound to enforce, and is rare/small enough in practice not to
+  // need one of its own.
+  if (roomId) pruneLogEvents(db, roomId);
+}
+
+function safeWriteLogEvent(
+  roomId: string | null,
+  sessionId: string,
+  eventType: LogEventRecord["eventType"],
+  action: string,
+  outcome: LogEventRecord["outcome"],
+  reason?: string,
+): void {
+  try {
+    writeLogEvent(roomId, sessionId, eventType, action, outcome, reason);
+  } catch (err) {
+    // A failure here must never propagate: the action's real outcome
+    // (returned to the caller before this ever runs) is already decided
+    // and must stand regardless of whether its audit trail could be
+    // written. Logged to stderr, distinct from the normal stdout log
+    // lines, so a durable-logging outage is itself visible rather than
+    // silently swallowed.
+    console.error(JSON.stringify({ at: new Date().toISOString(), type: "log_event_write_failed", error: String(err) }));
+  }
+}
+
+// Read-only, server-side only: every mutating route derives `roomId` from
+// the trusted session cookie before ever calling this (src/pages/api/
+// rooms/events.ts) — there is no way for a request to pass a DIFFERENT
+// room's id here and read its events; the WHERE clause below is the only
+// thing standing between "my room's events" and "any room's events," and
+// every caller is required to have already proven (via session.roomId)
+// that this is genuinely their own room.
+export function getRoomLogEvents(roomId: string, limit = LOG_EVENTS_LIMIT): LogEventRecord[] {
+  return db
+    .select()
+    .from(logEvents)
+    .where(eq(logEvents.roomId, roomId))
+    .orderBy(desc(logEvents.id))
+    .limit(limit)
+    .all() as LogEventRecord[];
 }
 
 // ---- sessions: a lightweight, unauthenticated visitor identity ------------
@@ -153,6 +297,7 @@ export function hostRoom(session: Session, label: string): Room {
     return newRoom;
   });
   logRoomEvent({ roomId: room.id, sessionId: session.id, sessionLabel: label, type: "room_hosted" });
+  safeWriteLogEvent(room.id, session.id, "room_event", "room_hosted", "success");
   return room;
 }
 
@@ -173,9 +318,11 @@ export function joinRoom(session: Session, label: string, roomId: string): Room 
   });
   if ("reason" in room) {
     logRoomEvent({ roomId: null, sessionId: session.id, sessionLabel: label, type: "room_join_rejected", attemptedCode: roomId, reason: room.reason });
+    safeWriteLogEvent(null, session.id, "room_event", "room_join_rejected", "rejected", room.reason);
     return room;
   }
   logRoomEvent({ roomId: room.id, sessionId: session.id, sessionLabel: label, type: "room_joined" });
+  safeWriteLogEvent(room.id, session.id, "room_event", "room_joined", "success");
   return room;
 }
 
@@ -371,6 +518,15 @@ export function performAction(action: ActionName, session: Session, roomId: stri
     outcome,
     ...("reason" in result ? { reason: result.reason } : {}),
   });
+  // Durable fallback for the line just logged above (PROCESS.md, Decision
+  // 13's log-retention follow-up). Called AFTER db.transaction() has
+  // already returned — whether that transaction committed (success) or
+  // was rolled back (rejection, `outcome.ok === false` inside it) makes no
+  // difference here: `result`/`outcome` already reflect the REAL, final
+  // decision either way, and this is a plain, unconditional insert, not
+  // nested inside that transaction — exactly what makes a rejection's
+  // record durable despite its own mutation having rolled back.
+  safeWriteLogEvent(roomId, session.id, "care_action", action, outcome, "reason" in result ? result.reason : undefined);
 
   // Broadcast only after the transaction has actually committed, and only
   // on success — a rejection never reaches here, so it never produces an
@@ -437,6 +593,7 @@ export function performWardrobeChange(slot: WardrobeSlot, value: string | null, 
   });
 
   logCareEvent({ roomId, sessionId: session.id, sessionLabel: session.label, action: "wardrobe", outcome: "success" });
+  safeWriteLogEvent(roomId, session.id, "care_action", "wardrobe", "success");
   broadcastUpdate(roomId);
   return result;
 }
@@ -486,6 +643,7 @@ export function performAdventure(session: Session, roomId: string): CreatureStat
     outcome,
     ...("reason" in result ? { reason: result.reason } : {}),
   });
+  safeWriteLogEvent(roomId, session.id, "care_action", "adventure", outcome, "reason" in result ? result.reason : undefined);
 
   if (!("reason" in result)) broadcastUpdate(roomId);
   return result;

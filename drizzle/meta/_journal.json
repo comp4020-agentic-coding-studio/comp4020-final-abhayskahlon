@@ -29,6 +29,13 @@
       "when": 1792241814475,
       "tag": "0003_strange_hedge_knight",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1792251330834,
+      "tag": "0004_true_madame_web",
+      "breakpoints": true
     }
   ]
 }

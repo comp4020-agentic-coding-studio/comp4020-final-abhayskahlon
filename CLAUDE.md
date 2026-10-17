@@ -1,13 +1,18 @@
 # COMMONS — project rules
 
 A single shared digital creature, Milo, cared for collectively by everyone
-currently using the room. The central design question — what happens when
-responsibility for one persistent being is shared across several people —
-and every decision behind the current shape of the app lives in
-`PROCESS.md`, including three real bugs found via human playtesting and how
-each was actually diagnosed and fixed ("Incidents found via human
-playtesting"). Read PROCESS.md before changing the schema, the action
-rules, or the real-time mechanism; these rules summarise it for the agent,
+currently using the same room. Since crit 10 (PROCESS.md, Decision 13),
+"the room" is an explicit, chosen scope — a visitor joins one by code or
+hosts a new one — rather than the whole deployment; within a room, nothing
+changed: one creature, shared, not one per user. The central design
+question — what happens when responsibility for one persistent being is
+shared across several people — and every decision behind the current shape
+of the app lives in `PROCESS.md`, including three real bugs found via human
+playtesting and how each was actually diagnosed and fixed ("Incidents found
+via human playtesting") and the crit 10 pivot to dedicated rooms (Decision
+13, `docs/adr/0002-multi-room-identity-and-access-control.md`). Read
+PROCESS.md before changing the schema, the action rules, the room/identity
+model, or the real-time mechanism; these rules summarise it for the agent,
 not replace it.
 
 The name "Milo" is a fixed literal (`src/pages/index.astro`, in both the
@@ -18,7 +23,13 @@ apart if one of them ever needs editing.
 ## The database is the only source of truth
 
 - SQLite (via Drizzle, `src/lib/db.ts`) holds the entire persistent state:
-  `creature` (one row), `sessions`, `care_events`.
+  `rooms`, `creature` (one row **per room**, `roomId` unique), `sessions`
+  (each with a `roomId` — null until a visitor joins or hosts), and
+  `care_events` (each row's `roomId` captured at action time, independent
+  of the session's *current* room). Every creature read or write is scoped
+  by `roomId`, and that `roomId` is always derived from the trusted session
+  cookie server-side — never a client-supplied field (PROCESS.md, Decision
+  13; `docs/adr/0002-multi-room-identity-and-access-control.md`).
 - No feature may use an in-memory array, a module-level variable, or
   `localStorage` as its primary record. The in-memory SSE client set in
   `src/lib/sse.ts` is the one deliberate exception, and it is never a record
@@ -71,8 +82,12 @@ apart if one of them ever needs editing.
 
 - `src/lib/sse.ts` broadcasts to open `/api/events` connections after a
   mutation commits — on success only; a rejection never reaches
-  `broadcastUpdate()`. The broadcast payload is a bare signal (`{}`), never
-  a copy of state — a client that reconnects, or that gets this signal,
+  `broadcastUpdate()`. Since Decision 13, broadcasting is **per room**
+  (`broadcastUpdate(roomId)`, a `Map<roomId, Set<client>>`, not one flat
+  `Set`): an update in one room must never reach a client connected to a
+  different room, since the mere existence of an event is itself a signal
+  about that room. The broadcast payload is a bare signal (`{}`), never a
+  copy of state — a client that reconnects, or that gets this signal,
   always re-fetches current state from `GET /`, because nothing in the SSE
   payload isn't already in SQLite.
 - `refreshLiveState()` in `src/pages/index.astro` is the one place that
@@ -121,6 +136,14 @@ apart if one of them ever needs editing.
   visit. No password, no login form, no identity that persists across
   browsers. Don't add authentication — it's explicitly out of scope for this
   deliverable (PROCESS.md, "Out of scope").
+- Since Decision 13, a session also carries a `roomId` (null until it joins
+  or hosts a room). That value is set in exactly two places —
+  `hostRoom()`/`joinRoom()` in `src/lib/db.ts` — and every mutating route
+  reads it from the session, never from a client-supplied field. Don't add
+  a `roomId` form field, query parameter, or body key to any route that
+  mutates creature state; that would reopen exactly the cross-room access
+  the server-derived-room design (`docs/adr/0002`) exists to close by
+  construction.
 
 ## Testing
 
@@ -172,6 +195,13 @@ apart if one of them ever needs editing.
 No accounts/profiles, chat, voting/likes, maps, push/SMS/email
 notifications, realtime infrastructure beyond the single SSE endpoint above,
 admin dashboards, machine learning, leaderboards, achievements, shops,
-inventories, multiple creatures, or AI. See PROCESS.md for the one idea
-(a non-competitive "neglect" callout) that was considered and deliberately
-deferred rather than rejected outright.
+inventories, or AI. See PROCESS.md for the one idea (a non-competitive
+"neglect" callout) that was considered and deliberately deferred rather
+than rejected outright.
+
+"Multiple creatures" is no longer on this list as a blanket rule — see
+PROCESS.md, Decision 13. A room still has exactly one shared creature, no
+per-user creature, no per-user ownership; what's allowed is multiple
+*rooms*, each isolated, each with its own single creature. Don't read this
+as license to add a second creature within one room, a per-user pet, or
+anything else this list otherwise still rules out.

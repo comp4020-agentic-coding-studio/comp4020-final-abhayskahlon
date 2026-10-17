@@ -28,6 +28,12 @@ recorded as their own decisions below: health derived not stored (Decision
 callout in v1 (Decision 3), and a requirement to make shared custody visually
 obvious without a leaderboard (Decision 6).
 
+**Updated by Decision 13 (crit 10).** "One persistent being, not one per
+user" is still true *within* a room — what changed is that "the room" is
+now an explicit, chosen scope (one creature per room, joined or hosted by
+code) rather than an implicit one (one creature, period). See Decision 13
+for the full accounting of what stayed true and what changed.
+
 ## Decision 2 — stats: four stored, one derived
 
 **Decision.** Store exactly four needs — `hunger`, `energy`, `happiness`,
@@ -233,6 +239,15 @@ visited," not literally "how long the `creature` row has existed" — the
 gap between those two moments is however long the server sat idle before
 its first visitor, which is the cost of not adding a column for this.
 
+**Superseded by Decision 13.** Rooms now have their own `rooms.createdAt`,
+written once at hosting and never touched again — the exact stable-
+timestamp column this decision originally argued against adding, except
+now it's genuinely needed: `MIN(sessions.createdAt)` was a deployment-wide
+query with no way to scope it to one room, so the workaround this decision
+describes no longer applies. Milo's age is now read directly off the room
+it belongs to. Left here, not deleted, because the reasoning above is still
+correct history for why that workaround existed in the first place.
+
 ## Decision 11 — wardrobe is cosmetic, shared state, not an inventory
 
 **Decision.** Two columns on the one `creature` row — `hat`, `neckwear` —
@@ -272,13 +287,76 @@ deliberately (its own `applyAdventure`, its own route,
 `src/pages/api/adventure.ts`) so Decision 3's "exactly five actions" stays
 true in code, not just in spirit.
 
+## Decision 13 — dedicated rooms: one creature per room, not per deployment
+
+**Decision.** COMMONS' "one shared creature" promise now applies per
+**room**, not per deployment. A visitor enters a display name and either
+joins an existing room by a 6-character code or hosts a brand-new one;
+everyone who joins or hosts the same room shares that room's own creature,
+history, and real-time broadcast — isolated from every other room. A
+session belongs to whichever room it most recently joined or hosted
+(joining/hosting always overwrites; there's no separate "leave").
+
+A room's host is recorded and shown ("Hosted by X") but has **no powers an
+ordinary member lacks** — attribution only, the same pattern
+`lastActorSessionId` already uses elsewhere. The room a mutating request
+acts on is always derived from the trusted, httpOnly session cookie, never
+from a client-supplied field — there is no `roomId` input anywhere for a
+crafted request to redirect at another room. Full design, alternatives, and
+security reasoning: `docs/adr/0002-multi-room-identity-and-access-control.md`.
+
+**Why this is a pivot, not a quiet contradiction.** Decision 1 originally
+framed COMMONS as "one persistent being, not one per user," and the
+out-of-scope list below used to name "multiple creatures" outright. Both
+were written when "the room" meant the entire deployment. What those rules
+were actually protecting — one shared creature per group, visible unranked
+collective care, no per-user pet, no leaderboard — is unchanged and now
+holds separately *inside* each room; what changed is that the group itself
+became an explicit, chosen scope instead of a fixed, implicit one. This is
+recorded here and in the ADR specifically so it reads as a deliberate
+decision, not as code quietly drifting away from its own rules.
+
+**The legacy single creature is not reset.** The schema migration
+(`drizzle/0003_*.sql`) backfills any pre-existing creature, sessions, and
+care history into one fixed room, `id = "COMMONS"`, attributed to whoever
+last acted on it — production's existing Milo and history survive with no
+visitor-facing disruption. On a fresh database, every backfill statement
+matches zero rows: a correct no-op, not a forced default room.
+
+**Server-side logging, added alongside this.** `src/lib/log.ts` writes one
+structured line to stdout per room host/join/rejected-join and per care
+action's outcome (success *and* rejection) — the concrete gap this crit's
+spec names directly: logging that outlives the crit, read live from
+`mise exec -- flyctl logs -a <repo>` while narrating a two-profile demo. A
+rejection is still never written to `care_events` (unchanged from the rule
+above); this log is the one place a rejection's attribution is recorded at
+all.
+
+**Why not rely on `creature.id` reuse or a single global row with a
+"current room" flag.** A room needs its own independent stats, activity
+cooldown, wardrobe, and capped history — trying to multiplex all of that
+through one row (or swapping which row is "active") would mean every
+room's state fighting over the same cells, defeating isolation entirely.
+One `creature` row per room, with a unique `roomId`, is the only shape that
+actually isolates anything.
+
 ## Out of scope for this deliverable (unchanged from the course's own list)
 
 No accounts/profiles, chat, voting/likes, maps, push/SMS/email
 notifications, admin dashboards, machine learning — and, specific to this
-concept, no leaderboards, achievements, shops, inventories, multiple
-creatures, or AI. The neglect callout (Decision 3) is the one idea considered
-and explicitly deferred rather than rejected outright.
+concept, no leaderboards, achievements, shops, inventories, or AI. The
+neglect callout (Decision 3) is the one idea considered and explicitly
+deferred rather than rejected outright.
+
+**"Multiple creatures," updated by Decision 13.** This line used to rule out
+multiple creatures outright, back when "the room" meant the whole
+deployment. It now means: no multiple creatures **within** a room — a room
+still has exactly one shared creature, visible to and mutable by everyone
+in it, with no per-user creature and no per-user ownership. What's allowed,
+and deliberately built in Decision 13, is multiple *rooms*, each with its
+own single creature, isolated from every other room's. This is the one
+line in this list that changed meaning rather than being honoured as
+originally written — recorded here, not silently reinterpreted.
 
 ## Incidents found via human playtesting
 

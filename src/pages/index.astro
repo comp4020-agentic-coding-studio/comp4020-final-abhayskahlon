@@ -5,17 +5,28 @@ import { pickDialogue } from "../components/dialogue";
 import Milo from "../components/Milo.astro";
 import StatIcon from "../components/StatIcon.astro";
 import { ACTIONS, type ActionName, WARDROBE_HATS, WARDROBE_LABELS, WARDROBE_NECKWEAR } from "../lib/creature";
-import { getCreatureState, getMiloAge } from "../lib/db";
+import { getCreatureState, getSessionRoom } from "../lib/db";
+import { DISPLAY_NAME_MAX_LENGTH, ROOM_CODE_LENGTH } from "../lib/room";
 import { getOrCreateSession } from "../lib/session";
 import "../styles.css";
 
 // Ensures every visitor has a stable cookie identity by the time they first
-// look, not only once they first act (see src/lib/session.ts).
-getOrCreateSession(Astro.cookies);
+// look, not only once they first act (see src/lib/session.ts). This never
+// implies room membership — a session can exist for a long time with
+// `roomId: null`, which is exactly the "hasn't joined or hosted yet" state
+// the entry experience below renders.
+const session = getOrCreateSession(Astro.cookies);
+const room = getSessionRoom(session);
 
-const state = getCreatureState();
-const age = formatMiloAge(getMiloAge());
-const dialogue = pickDialogue(state.stats, state.activity, state.history[0]?.createdAt ?? null);
+// `?switch=1` is the one deliberate way back to the entry experience while
+// already in a room (the "switch room" link below) — distinct from `!room`,
+// which is every first-time visitor. Neither path is a redirect: both just
+// render the entry markup instead of Milo's, from the same GET /.
+const showEntry = !room || Astro.url.searchParams.has("switch");
+
+const state = showEntry || !room ? null : getCreatureState(room.id);
+const age = state && room ? formatMiloAge(room.createdAt) : null;
+const dialogue = state ? pickDialogue(state.stats, state.activity, state.history[0]?.createdAt ?? null) : null;
 
 // A single, fixed name — not a naming feature. There is nowhere in this
 // app a visitor can set or change it; it's a literal here and in the
@@ -66,9 +77,11 @@ const ACTIVITY_DOING: Partial<Record<string, string>> = {
 };
 
 const activityPhrase =
-  state.activity === "sleeping"
+  state && state.activity === "sleeping"
     ? `${CREATURE_NAME} is sleeping`
-    : (state.lastAction && ACTIVITY_DOING[state.lastAction]) || `${CREATURE_NAME} is awake`;
+    : state
+      ? (state.lastAction && ACTIVITY_DOING[state.lastAction]) || `${CREATURE_NAME} is awake`
+      : "";
 ---
 
 <!doctype html>
@@ -88,195 +101,272 @@ const activityPhrase =
       </div>
     </header>
     <main class="app-main">
-      <h1>COMMONS</h1>
-      <p class="intro">
-        Everyone here is looking after {CREATURE_NAME} — one shared creature,
-        not your own pet.
-      </p>
-      <p class="live-indicator" id="live-indicator">connecting…</p>
+      {
+        showEntry || !room || !state || !dialogue ? (
+          <section class="panel entry-panel" aria-labelledby="entry-heading">
+            <h1 id="entry-heading">COMMONS</h1>
+            <p class="intro">
+              {CREATURE_NAME} is cared for by whoever's in the same room — enter your name, then either join a room
+              with its code or host a brand-new one.
+            </p>
 
-      <div id="live-state">
-        <section class="panel creature-panel" aria-labelledby="creature-heading">
-          <h2 id="creature-heading">
-            {CREATURE_NAME}
-            <span class="milo-age" title={age.milestone ?? undefined}>{age.text}</span>
-          </h2>
-          {age.milestone && <p class="milo-milestone">{age.milestone}</p>}
+            {/* Validated server-side by src/pages/api/rooms/join.ts — this
+                form never resolves a room itself, it only ever submits what
+                a visitor typed. A room's existence is checked against the
+                database on every attempt, never assumed from this page. */}
+            <form method="post" action="/api/rooms/join" class="entry-form">
+              <h2>Join a room</h2>
+              <label for="join-name">Your name</label>
+              <input
+                id="join-name"
+                name="name"
+                type="text"
+                maxlength={DISPLAY_NAME_MAX_LENGTH}
+                value={session.label}
+                required
+                autocomplete="off"
+              />
+              <label for="join-code">Room code</label>
+              <input
+                id="join-code"
+                name="roomCode"
+                type="text"
+                maxlength={ROOM_CODE_LENGTH}
+                placeholder="e.g. 4Q7K2P"
+                autocapitalize="characters"
+                autocomplete="off"
+                required
+              />
+              <button type="submit">Join room</button>
+            </form>
 
-          <Milo activity={state.activity} stats={state.stats} hat={state.hat} neckwear={state.neckwear} />
+            {/* A separate form, not a second button on the one above: hosting
+                takes only a name (the code is always server-generated —
+                src/lib/room.ts), so sharing a submit with "join" would mean
+                either form silently ignoring a field the other doesn't use. */}
+            <form method="post" action="/api/rooms/host" class="entry-form">
+              <h2>Host a new room</h2>
+              <label for="host-name">Your name</label>
+              <input
+                id="host-name"
+                name="name"
+                type="text"
+                maxlength={DISPLAY_NAME_MAX_LENGTH}
+                value={session.label}
+                required
+                autocomplete="off"
+              />
+              <button type="submit">Host a room</button>
+            </form>
 
-          <p class="milo-dialogue">"{dialogue}"</p>
+            <p class="entry-error" id="entry-error" role="alert" aria-live="polite" hidden />
+          </section>
+        ) : (
+          <>
+            <h1>COMMONS</h1>
+            <p class="intro">
+              Everyone in room <strong>{room.id}</strong> is looking after {CREATURE_NAME} — one shared creature, not
+              your own pet. <a href="/?switch=1">Switch room</a>
+            </p>
+            <p class="live-indicator" id="live-indicator">
+              connecting…
+            </p>
 
-          <span
-            class={`activity-badge ${state.activity}`}
-            id="activity-badge"
-            data-activity-until={state.activityUntil ?? ""}
-          >
-            {activityPhrase}
-          </span>
+            <div id="live-state">
+              <section class="panel creature-panel" aria-labelledby="creature-heading">
+                <h2 id="creature-heading">
+                  {CREATURE_NAME}
+                  <span class="milo-age" title={age?.milestone ?? undefined}>{age?.text}</span>
+                </h2>
+                {age?.milestone && <p class="milo-milestone">{age.milestone}</p>}
+                {room.hostLabel && <p class="panel-note">Hosted by {room.hostLabel}</p>}
 
-          {
-            (Object.keys(STAT_LABELS) as (keyof typeof STAT_LABELS)[]).map((key) => (
-              <div class="stat-row" data-stat={key}>
-                <span class="stat-label">
-                  <StatIcon stat={key} class="stat-icon" />
-                  {STAT_LABELS[key]}
+                <Milo activity={state.activity} stats={state.stats} hat={state.hat} neckwear={state.neckwear} />
+
+                <p class="milo-dialogue">"{dialogue}"</p>
+
+                <span
+                  class={`activity-badge ${state.activity}`}
+                  id="activity-badge"
+                  data-activity-until={state.activityUntil ?? ""}
+                >
+                  {activityPhrase}
                 </span>
-                <span class="stat-bar">
-                  <span class="stat-bar-fill" style={`width: ${state.stats[key]}%`} />
-                </span>
-                <span class="stat-value">{state.stats[key]}</span>
+
+                {
+                  (Object.keys(STAT_LABELS) as (keyof typeof STAT_LABELS)[]).map((key) => (
+                    <div class="stat-row" data-stat={key}>
+                      <span class="stat-label">
+                        <StatIcon stat={key} class="stat-icon" />
+                        {STAT_LABELS[key]}
+                      </span>
+                      <span class="stat-bar">
+                        <span class="stat-bar-fill" style={`width: ${state.stats[key]}%`} />
+                      </span>
+                      <span class="stat-value">{state.stats[key]}</span>
+                    </div>
+                  ))
+                }
+
+                <p class="condition">
+                  Overall condition: <strong>{state.health}</strong>/100 — a simple read of the four needs above, not
+                  its own mechanic.
+                </p>
+
+                {
+                  state.lastAction && (
+                    <p class="last-action">
+                      Last action: <strong>{ACTION_LABELS[state.lastAction] ?? state.lastAction}</strong>
+                      {state.lastActorLabel && (
+                        <>
+                          {" "}
+                          by <strong>{state.lastActorLabel}</strong>
+                        </>
+                      )}
+                    </p>
+                  )
+                }
+              </section>
+
+              <section class="panel history-panel" aria-labelledby="history-heading">
+                <h2 id="history-heading">Recent care</h2>
+                <p class="panel-note">
+                  Everyone who's cared for {CREATURE_NAME} recently in this room — not a leaderboard, just what
+                  happened and who was there.
+                </p>
+                {state.history.length === 0 && <p class="panel-note">Nothing yet — be the first.</p>}
+                <ul class="history-list">
+                  {
+                    state.history.map((entry) => (
+                      <li>
+                        <ActionIcon action={entry.action as ActionName} class="history-icon" />
+                        <span>
+                          <strong>{entry.actorLabel}</strong> {ACTION_PAST_TENSE[entry.action] ?? entry.action}{" "}
+                          {CREATURE_NAME} ({entry.summary}) — <span class="history-time">{entry.createdAt}</span>
+                        </span>
+                      </li>
+                    ))
+                  }
+                </ul>
+              </section>
+
+              <!-- Inside #live-state deliberately, unlike actions-panel below:
+                   the wardrobe forms' hidden inputs encode the OTHER slot's
+                   current value (so a hat choice doesn't clobber an
+                   already-chosen scarf) and the "selected" highlighting reflects
+                   who most recently changed it — both need a value newer than
+                   this page's first load, which only the refreshLiveState() swap
+                   provides. The script's submit handler is a single delegated
+                   listener on `document` (see below) specifically so it keeps
+                   working for forms in here across that swap. -->
+              <section class="panel activities-panel" aria-labelledby="activities-heading">
+                <h2 id="activities-heading">Shared activities</h2>
+                <p class="panel-note">
+                  A shared look, and a shared adventure — free, cosmetic, nobody's score. Changes here are visible to
+                  everyone in this room, the same as everything else {CREATURE_NAME} does.
+                </p>
+
+                {/* Each form carries exactly ONE slot + ONE value, never the
+                    other slot's current value — the server reads that fresh
+                    inside its own transaction (src/lib/db.ts's
+                    performWardrobeChange) precisely so a hat choice can never
+                    silently revert a scarf someone else just picked, no matter
+                    how stale this rendered page is. */}
+                <p class="wardrobe-slot-label">Hat</p>
+                <div class="wardrobe-options" role="group" aria-label="Hat">
+                  <form method="post" action="/api/wardrobe" class="activity-form wardrobe-form">
+                    <input type="hidden" name="slot" value="hat" />
+                    <input type="hidden" name="value" value="" />
+                    <button
+                      aria-pressed={state.hat === null}
+                      class:list={["wardrobe-option", { selected: state.hat === null }]}
+                    >
+                      None
+                    </button>
+                  </form>
+                  {
+                    WARDROBE_HATS.map((option) => (
+                      <form method="post" action="/api/wardrobe" class="activity-form wardrobe-form">
+                        <input type="hidden" name="slot" value="hat" />
+                        <input type="hidden" name="value" value={option} />
+                        <button
+                          aria-pressed={state.hat === option}
+                          class:list={["wardrobe-option", { selected: state.hat === option }]}
+                        >
+                          {WARDROBE_LABELS[option]}
+                        </button>
+                      </form>
+                    ))
+                  }
+                </div>
+
+                <p class="wardrobe-slot-label">Neckwear</p>
+                <div class="wardrobe-options" role="group" aria-label="Neckwear">
+                  <form method="post" action="/api/wardrobe" class="activity-form wardrobe-form">
+                    <input type="hidden" name="slot" value="neckwear" />
+                    <input type="hidden" name="value" value="" />
+                    <button
+                      aria-pressed={state.neckwear === null}
+                      class:list={["wardrobe-option", { selected: state.neckwear === null }]}
+                    >
+                      None
+                    </button>
+                  </form>
+                  {
+                    WARDROBE_NECKWEAR.map((option) => (
+                      <form method="post" action="/api/wardrobe" class="activity-form wardrobe-form">
+                        <input type="hidden" name="slot" value="neckwear" />
+                        <input type="hidden" name="value" value={option} />
+                        <button
+                          aria-pressed={state.neckwear === option}
+                          class:list={["wardrobe-option", { selected: state.neckwear === option }]}
+                        >
+                          {WARDROBE_LABELS[option]}
+                        </button>
+                      </form>
+                    ))
+                  }
+                </div>
+
+                <form method="post" action="/api/adventure" class="activity-form adventure-form">
+                  {/* Not read by /api/adventure.ts (that route takes no action name
+                      at all — there's only one adventure to validate) — this exists
+                      purely so the client's generic playReaction(actionName) call
+                      picks "adventure" and reveals Milo.astro's mud-splat reaction
+                      group, the same mechanism every care action already uses. */}
+                  <input type="hidden" name="action" value="adventure" />
+                  <button>
+                    <ActionIcon action="adventure" />
+                    Send {CREATURE_NAME} on an adventure
+                  </button>
+                </form>
+              </section>
+            </div>
+
+            <!-- Outside #live-state, unlike activities-panel above: these five
+                 forms' hidden "action" values never depend on current creature
+                 state, so there's nothing for them to go stale showing — they
+                 never need to be part of the live-refreshed region. -->
+            <section class="panel actions-panel" aria-labelledby="actions-heading">
+              <h2 id="actions-heading">Care for {CREATURE_NAME}</h2>
+              <div class="actions">
+                {
+                  ACTIONS.map((action) => (
+                    <form method="post" action="/api/actions" class="action-form">
+                      <input type="hidden" name="action" value={action} />
+                      <button>
+                        <ActionIcon action={action} />
+                        {ACTION_LABELS[action] ?? action}
+                      </button>
+                    </form>
+                  ))
+                }
               </div>
-            ))
-          }
-
-          <p class="condition">
-            Overall condition: <strong>{state.health}</strong>/100 — a simple read of the four needs above, not its
-            own mechanic.
-          </p>
-
-          {
-            state.lastAction && (
-              <p class="last-action">
-                Last action: <strong>{ACTION_LABELS[state.lastAction] ?? state.lastAction}</strong>
-                {state.lastActorLabel && (
-                  <>
-                    {" "}
-                    by <strong>{state.lastActorLabel}</strong>
-                  </>
-                )}
-              </p>
-            )
-          }
-        </section>
-
-        <section class="panel history-panel" aria-labelledby="history-heading">
-          <h2 id="history-heading">Recent care</h2>
-          <p class="panel-note">
-            Everyone who's cared for {CREATURE_NAME} recently — not a leaderboard, just what happened and who was
-            there.
-          </p>
-          {state.history.length === 0 && <p class="panel-note">Nothing yet — be the first.</p>}
-          <ul class="history-list">
-            {
-              state.history.map((entry) => (
-                <li>
-                  <ActionIcon action={entry.action as ActionName} class="history-icon" />
-                  <span>
-                    <strong>{entry.actorLabel}</strong> {ACTION_PAST_TENSE[entry.action] ?? entry.action} {CREATURE_NAME}{" "}
-                    ({entry.summary}) — <span class="history-time">{entry.createdAt}</span>
-                  </span>
-                </li>
-              ))
-            }
-          </ul>
-        </section>
-
-        <!-- Inside #live-state deliberately, unlike actions-panel below:
-             the wardrobe forms' hidden inputs encode the OTHER slot's
-             current value (so a hat choice doesn't clobber an
-             already-chosen scarf) and the "selected" highlighting reflects
-             who most recently changed it — both need a value newer than
-             this page's first load, which only the refreshLiveState() swap
-             provides. The script's submit handler is a single delegated
-             listener on `document` (see below) specifically so it keeps
-             working for forms in here across that swap. -->
-        <section class="panel activities-panel" aria-labelledby="activities-heading">
-          <h2 id="activities-heading">Shared activities</h2>
-          <p class="panel-note">
-            A shared look, and a shared adventure — free, cosmetic, nobody's score. Changes here are visible to
-            everyone, the same as everything else {CREATURE_NAME} does.
-          </p>
-
-          {/* Each form carries exactly ONE slot + ONE value, never the
-              other slot's current value — the server reads that fresh
-              inside its own transaction (src/lib/db.ts's
-              performWardrobeChange) precisely so a hat choice can never
-              silently revert a scarf someone else just picked, no matter
-              how stale this rendered page is. */}
-          <p class="wardrobe-slot-label">Hat</p>
-          <div class="wardrobe-options" role="group" aria-label="Hat">
-            <form method="post" action="/api/wardrobe" class="activity-form wardrobe-form">
-              <input type="hidden" name="slot" value="hat" />
-              <input type="hidden" name="value" value="" />
-              <button aria-pressed={state.hat === null} class:list={["wardrobe-option", { selected: state.hat === null }]}>
-                None
-              </button>
-            </form>
-            {
-              WARDROBE_HATS.map((option) => (
-                <form method="post" action="/api/wardrobe" class="activity-form wardrobe-form">
-                  <input type="hidden" name="slot" value="hat" />
-                  <input type="hidden" name="value" value={option} />
-                  <button aria-pressed={state.hat === option} class:list={["wardrobe-option", { selected: state.hat === option }]}>
-                    {WARDROBE_LABELS[option]}
-                  </button>
-                </form>
-              ))
-            }
-          </div>
-
-          <p class="wardrobe-slot-label">Neckwear</p>
-          <div class="wardrobe-options" role="group" aria-label="Neckwear">
-            <form method="post" action="/api/wardrobe" class="activity-form wardrobe-form">
-              <input type="hidden" name="slot" value="neckwear" />
-              <input type="hidden" name="value" value="" />
-              <button aria-pressed={state.neckwear === null} class:list={["wardrobe-option", { selected: state.neckwear === null }]}>
-                None
-              </button>
-            </form>
-            {
-              WARDROBE_NECKWEAR.map((option) => (
-                <form method="post" action="/api/wardrobe" class="activity-form wardrobe-form">
-                  <input type="hidden" name="slot" value="neckwear" />
-                  <input type="hidden" name="value" value={option} />
-                  <button
-                    aria-pressed={state.neckwear === option}
-                    class:list={["wardrobe-option", { selected: state.neckwear === option }]}
-                  >
-                    {WARDROBE_LABELS[option]}
-                  </button>
-                </form>
-              ))
-            }
-          </div>
-
-          <form method="post" action="/api/adventure" class="activity-form adventure-form">
-            {/* Not read by /api/adventure.ts (that route takes no action name
-                at all — there's only one adventure to validate) — this exists
-                purely so the client's generic playReaction(actionName) call
-                picks "adventure" and reveals Milo.astro's mud-splat reaction
-                group, the same mechanism every care action already uses. */}
-            <input type="hidden" name="action" value="adventure" />
-            <button>
-              <ActionIcon action="adventure" />
-              Send {CREATURE_NAME} on an adventure
-            </button>
-          </form>
-        </section>
-      </div>
-
-      <!-- Outside #live-state, unlike activities-panel above: these five
-           forms' hidden "action" values never depend on current creature
-           state, so there's nothing for them to go stale showing — they
-           never need to be part of the live-refreshed region. -->
-      <section class="panel actions-panel" aria-labelledby="actions-heading">
-        <h2 id="actions-heading">Care for {CREATURE_NAME}</h2>
-        <div class="actions">
-          {
-            ACTIONS.map((action) => (
-              <form method="post" action="/api/actions" class="action-form">
-                <input type="hidden" name="action" value={action} />
-                <button>
-                  <ActionIcon action={action} />
-                  {ACTION_LABELS[action] ?? action}
-                </button>
-              </form>
-            ))
-          }
-        </div>
-        <p class="action-error" id="action-error" role="alert" aria-live="polite" hidden></p>
-      </section>
+              <p class="action-error" id="action-error" role="alert" aria-live="polite" hidden />
+            </section>
+          </>
+        )
+      }
     </main>
 
     <script>
@@ -286,7 +376,7 @@ const activityPhrase =
       // rejected action's reason just arrives as a plain-text page instead
       // of inline. The server is unchanged either way: still a 303 on
       // success, still a 4xx with a reason on rejection (src/pages/api/
-      // actions.ts).
+      // actions.ts, src/pages/api/rooms/{host,join}.ts).
       //
       // The success path used to be `if (res.ok) location.reload()`, which
       // trusted `fetch()`'s *automatic* following of that 303 — and on
@@ -299,16 +389,18 @@ const activityPhrase =
       // either: the actor's own tab would show a garbled error while the
       // server had already committed the action. `res.redirected` is the
       // one thing fetch exposes unambiguously here: a 303 is the ONLY way
-      // this server's /api/actions response is ever followed anywhere, so
-      // "was redirected" IS "the action is successful" — checked directly,
-      // not inferred from whatever the followed response's status became.
+      // any of this server's success responses are ever followed anywhere,
+      // so "was redirected" IS "the action is successful" — checked
+      // directly, not inferred from whatever the followed response's
+      // status became.
       const errorBox = document.getElementById("action-error");
+      const entryErrorBox = document.getElementById("entry-error");
 
       // The server is the only source of truth for why an action was
       // rejected — this never guesses, constructs, or duplicates a reason
-      // client-side; it only ever reads exactly what /api/actions sent
-      // (e.g. "too hungry to sleep", "the creature is asleep right now").
-      // The one thing it refuses to trust blindly is the response's own
+      // client-side; it only ever reads exactly what the server sent
+      // (e.g. "too hungry to sleep", "no room with that code"). The one
+      // thing it refuses to trust blindly is the response's own
       // CONTENT-TYPE: if that's ever HTML (a proxy error page, a misrouted
       // 404, anything that isn't this app's own plain-text response),
       // that's a sign something is wrong upstream, not content to show a
@@ -322,17 +414,18 @@ const activityPhrase =
         return text.length > 0 ? text : null;
       }
 
-      // Both the five care-action forms AND the shared-activity forms
-      // (wardrobe, adventure) go through this exact same handler — it was
-      // already fully generic (reads form.getAttribute("action"), checks
-      // res.redirected, calls refreshLiveState()), so the new forms need a
-      // second class rather than reusing ".action-form": spec/
-      // action-form-url.test.ts asserts every ".action-form" resolves to
-      // exactly "/api/actions", which a wardrobe/adventure form pointing
-      // elsewhere would break. ".activity-form" gets everything this handler
-      // does, including the same form.getAttribute("action") fix (never
-      // form.action) that test exists to protect, just without that one
-      // test asserting it for these specific forms too.
+      // The five care-action forms, the shared-activity forms (wardrobe,
+      // adventure), AND the two room entry forms (join, host) all go
+      // through this exact same handler — it was already fully generic
+      // (reads form.getAttribute("action"), checks res.redirected), so the
+      // new forms need their own class rather than reusing ".action-form":
+      // spec/action-form-url.test.ts asserts every ".action-form" resolves
+      // to exactly "/api/actions", which a wardrobe/adventure/entry form
+      // pointing elsewhere would break. ".activity-form" and ".entry-form"
+      // get everything this handler does, including the same
+      // form.getAttribute("action") fix (never form.action) that test
+      // exists to protect, just without that one test asserting it for
+      // these specific forms too.
       //
       // One delegated listener on `document`, attached exactly once, rather
       // than a per-form loop: the wardrobe forms' hidden inputs encode the
@@ -349,18 +442,20 @@ const activityPhrase =
       // live in the DOM at the moment of the click, old or newly-swapped.
       document.addEventListener("submit", async (event) => {
         const form = event.target;
-        if (!(form instanceof HTMLFormElement) || !form.matches(".action-form, .activity-form")) return;
+        if (!(form instanceof HTMLFormElement) || !form.matches(".action-form, .activity-form, .entry-form")) return;
 
         event.preventDefault();
         errorBox?.setAttribute("hidden", "");
+        entryErrorBox?.setAttribute("hidden", "");
 
+        const isEntryForm = form.matches(".entry-form");
         const formData = new FormData(form);
         const actionName = String(formData.get("action") ?? "");
 
         // Purely a UI affordance for the duration of this one request —
         // doesn't touch the request itself, and nothing in spec/ drives
         // the client script's button behaviour (those files POST straight
-        // to /api/actions from Node, never through this loaded page), so
+        // to the API routes from Node, never through this loaded page), so
         // there's no existing contract this could disturb.
         const button = form.querySelector("button");
         button?.setAttribute("data-loading", "");
@@ -368,25 +463,40 @@ const activityPhrase =
 
         try {
           // Not form.action: this form has a control named "action" (the
-          // hidden input carrying which action this is), and a named form
-          // control shadows the form element's own built-in `action`
-          // property in real browsers — form.action resolves to that
-          // HTMLInputElement, not the URL string, and fetch() silently
-          // stringifies it to "[object HTMLInputElement]". getAttribute()
-          // reads the literal attribute value, bypassing that shadowing
-          // entirely, and is what a real Chrome diagnostic (status 404,
-          // url ending in "/[object%20HTMLInputElement]") confirmed was
-          // actually happening — never reproduced by any scripted request,
-          // since those never touched the DOM's `form.action` property at
-          // all. Never rename the "action" input to dodge this: the
-          // server's whole validated vocabulary (src/lib/creature.ts
-          // ACTIONS, src/pages/api/actions.ts's form.get("action")) is
-          // built around that field name, and it's correct — the bug was
-          // purely in how the URL got read on this side.
+          // hidden input carrying which action this is) on the care/
+          // activity forms, and a named form control shadows the form
+          // element's own built-in `action` property in real browsers —
+          // form.action resolves to that HTMLInputElement, not the URL
+          // string, and fetch() silently stringifies it to
+          // "[object HTMLInputElement]". getAttribute() reads the literal
+          // attribute value, bypassing that shadowing entirely, and is what
+          // a real Chrome diagnostic (status 404, url ending in
+          // "/[object%20HTMLInputElement]") confirmed was actually
+          // happening — never reproduced by any scripted request, since
+          // those never touched the DOM's `form.action` property at all.
+          // Never rename the "action" input to dodge this: the server's
+          // whole validated vocabulary (src/lib/creature.ts ACTIONS,
+          // src/pages/api/actions.ts's form.get("action")) is built around
+          // that field name, and it's correct — the bug was purely in how
+          // the URL got read on this side. The entry forms have no such
+          // control (their fields are "name"/"roomCode"), so this is
+          // belt-and-braces there too, not just load-bearing for the forms
+          // that actually have an "action" field.
           const actionUrl = form.getAttribute("action") ?? "/api/actions";
           const res = await fetch(actionUrl, { method: "POST", body: formData });
 
           if (res.redirected) {
+            if (isEntryForm) {
+              // A genuine page-shape change, not the same situation
+              // Incident 1 was about: #live-state doesn't exist yet on the
+              // entry page, there is nothing for refreshLiveState() to
+              // swap into. A hard navigation is the correct, simplest way
+              // to move from "no room" to "this room's Milo" — unlike the
+              // care/activity forms, which stay on the same page shape
+              // before and after, so they keep using refreshLiveState().
+              location.href = "/";
+              return;
+            }
             // Success: re-fetch and swap the COMPLETE live state — stats,
             // condition, activity, last action, and history together —
             // the same path an SSE "update" event triggers for everyone
@@ -409,6 +519,13 @@ const activityPhrase =
           }
 
           const reason = await readRejectionReason(res);
+          if (isEntryForm) {
+            if (entryErrorBox) {
+              entryErrorBox.textContent = reason ?? "that didn't work — try again";
+              entryErrorBox.removeAttribute("hidden");
+            }
+            return;
+          }
           if (errorBox) {
             errorBox.textContent = reason ?? "that action isn't available right now";
             errorBox.removeAttribute("hidden");
@@ -457,7 +574,8 @@ const activityPhrase =
       // live-state swap below, since that replaces the badge element
       // entirely — the server-rendered text it starts with (computed from
       // state.activity / state.lastAction, never invented here) is what
-      // this only ever adds a live countdown on top of.
+      // this only ever adds a live countdown on top of. A no-op on the
+      // entry page, where #activity-badge doesn't exist.
       const CREATURE_NAME = "Milo"; // the same fixed name as the frontmatter above, not a shared config — see there
       let countdownInterval: ReturnType<typeof setInterval> | undefined;
       function attachActivityCountdown() {
@@ -477,17 +595,20 @@ const activityPhrase =
       }
       attachActivityCountdown();
 
-      // Real-time updates for every open session, including the actor's
-      // own tab: the server pushes a bare signal (no creature fields at
-      // all — see src/lib/sse.ts and PROCESS.md Decision 5) whenever
-      // someone's action commits, and this just re-fetches the actual
-      // server-rendered page and swaps in its ENTIRE #live-state — stats,
-      // condition, activity, last action AND the Recent care history
-      // together, in one replacement, since all of it lives inside that
-      // one container and this never swaps in less than the whole thing.
-      // There is deliberately no second copy of "what the state is" kept
-      // in this script; it never reads the event's own payload as if it
-      // were the state, only as "go look again."
+      // Real-time updates for every open session IN THIS ROOM, including
+      // the actor's own tab: the server pushes a bare signal (no creature
+      // fields at all — see src/lib/sse.ts and PROCESS.md Decision 5)
+      // whenever someone in this same room's action commits, and this just
+      // re-fetches the actual server-rendered page and swaps in its ENTIRE
+      // #live-state — stats, condition, activity, last action AND the
+      // Recent care history together, in one replacement, since all of it
+      // lives inside that one container and this never swaps in less than
+      // the whole thing. There is deliberately no second copy of "what the
+      // state is" kept in this script; it never reads the event's own
+      // payload as if it were the state, only as "go look again." A no-op
+      // on the entry page, where there is no room to subscribe to yet
+      // (src/pages/api/events.ts returns 403 for a session with no room,
+      // so this just never connects — nothing to reconnect either).
       //
       // `refreshSeq` guards against a real risk once more than one person
       // is acting at once (which is the entire premise of this app): two
@@ -523,13 +644,17 @@ const activityPhrase =
       // using the stream's `retry:` hint — see src/pages/api/events.ts) —
       // nothing extra to implement for that; this only reflects the
       // current connection state and re-subscribes to the same event name
-      // each time a new connection opens.
-      const events = new EventSource("/api/events");
-      events.addEventListener("open", () => setLive(true));
-      events.addEventListener("error", () => setLive(false));
-      events.addEventListener("update", () => {
-        refreshLiveState();
-      });
+      // each time a new connection opens. Only created on a page that
+      // actually rendered a room (#live-indicator only exists then) — the
+      // entry page never opens this connection at all.
+      if (liveIndicator) {
+        const events = new EventSource("/api/events");
+        events.addEventListener("open", () => setLive(true));
+        events.addEventListener("error", () => setLive(false));
+        events.addEventListener("update", () => {
+          refreshLiveState();
+        });
+      }
     </script>
   </body>
 </html>

@@ -3,6 +3,15 @@
 What's changed, in plain terms, newest first — read live via `/patch-notes/`
 and summarised on the entry page's own "what's new in COMMONS" section.
 
+## Patch 1.5 — Simbaa face proportions, corrected
+
+A follow-up to the lamb redesign: her face was still reading as small and
+dark next to her ears. The face is now noticeably larger and lighter, her
+eyes are a warm brown instead of near-black and sized down a touch so
+they're expressive without dominating the face, and the ears are about
+30% smaller — still floppy and pink-lined, just no longer competing with
+the face for attention. Still purely a look.
+
 ## Patch 1.4 — Simbaa actually looks like a lamb now
 
 Simbaa's fleece used to be a smooth, rounded body with small circles dotted

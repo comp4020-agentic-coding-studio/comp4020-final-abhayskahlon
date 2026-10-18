@@ -19,6 +19,19 @@
 // A separate, lighter face plate sits on top of the head fleece so the face
 // itself reads as skin, not wool — this is also new: the old version had no
 // visual separation between face and fleece at all.
+//
+// Second follow-up (reported directly, against a reference image): the
+// face plate above was too small and the ears too large relative to it,
+// so the head read as "mostly dark eyes and big ears" rather than "a
+// large, soft, friendly face." The face ellipse here is enlarged to
+// roughly 29x27 (was 27x24) against the SAME 80x38 head-fleece radius, and
+// every eye in the mood table below is shrunk and lightened to a warm
+// brown rather than the near-black outline color the rest of the face
+// uses for eye fill — large pupils in a near-black tone were themselves
+// part of why the face read as "small and dark." The ears are reduced by
+// about 30% (rx 16->11, ry 24->17, was already rotated outward) so they
+// stay visibly lamb-like (still floppy, still diagonal, still pink-lined)
+// without visually outweighing the now-larger face.
 import type { Activity, Stats } from "../lib/creature";
 import { computeMood } from "./mood";
 
@@ -54,14 +67,15 @@ function sparkle(cx: number, cy: number, r: number): string {
 
     <!-- floppy, droopy ears extending sideways — drawn before the head
          fleece so the fleece overlaps their inner base, with the tips
-         still clearly visible either side (unlike the previous small,
-         upright drop-ear shape, which read as generic "pet ears," not
-         specifically lamb ears). Warm pink inner-ear detail, as in the
-         reference. -->
-    <ellipse class="simbaa-ear" cx="24" cy="72" rx="16" ry="24" transform="rotate(-55 24 72)" />
-    <ellipse class="simbaa-ear" cx="136" cy="72" rx="16" ry="24" transform="rotate(55 136 72)" />
-    <ellipse class="simbaa-ear-inner" cx="24" cy="72" rx="9" ry="16" transform="rotate(-55 24 72)" />
-    <ellipse class="simbaa-ear-inner" cx="136" cy="72" rx="9" ry="16" transform="rotate(55 136 72)" />
+         still clearly visible either side. Reduced ~30% from the prior
+         size (rx 16->11, ry 24->17) so they read as secondary to the
+         now-larger face rather than visually overpowering the head; still
+         floppy, still diagonal, still pink-lined, so they stay
+         recognisably lamb-like rather than shrinking into generic nubs. -->
+    <ellipse class="simbaa-ear" cx="34" cy="66" rx="11" ry="17" transform="rotate(-55 34 66)" />
+    <ellipse class="simbaa-ear" cx="126" cy="66" rx="11" ry="17" transform="rotate(55 126 66)" />
+    <ellipse class="simbaa-ear-inner" cx="34" cy="66" rx="6" ry="11" transform="rotate(-55 34 66)" />
+    <ellipse class="simbaa-ear-inner" cx="126" cy="66" rx="6" ry="11" transform="rotate(55 126 66)" />
 
     <!-- body fleece: a genuine scalloped cloud (10 outward-bulging arcs
          around a base ellipse), not a smooth oval with circles on top. -->
@@ -78,13 +92,15 @@ function sparkle(cx: number, cy: number, r: number): string {
     />
 
     <!-- face plate: a distinct, lighter surface on top of the head fleece
-         so the face reads as skin, not wool — the main thing the old
-         design never did at all. -->
-    <ellipse class="simbaa-face-plate" cx="80" cy="66" rx="27" ry="24" />
+         so the face reads as skin, not wool. Enlarged from the first
+         redesign's 27x24 to 29x27 — against the same head-fleece radius,
+         this is the single biggest lever for "face fills most of the
+         head" rather than "a small patch surrounded by wool." -->
+    <ellipse class="simbaa-face-plate" cx="80" cy="65" rx="29" ry="27" />
 
     <!-- cheeks -->
-    <ellipse class="simbaa-cheek" cx="60" cy="74" rx="7" ry="4.5" />
-    <ellipse class="simbaa-cheek" cx="100" cy="74" rx="7" ry="4.5" />
+    <ellipse class="simbaa-cheek" cx="59" cy="74" rx="7" ry="4.5" />
+    <ellipse class="simbaa-cheek" cx="101" cy="74" rx="7" ry="4.5" />
 
     {
       hat === "top-hat" && (
@@ -182,19 +198,19 @@ function sparkle(cx: number, cy: number, r: number): string {
         </g>
       ) : family === "happy" ? (
         <g class="simbaa-face">
-          <ellipse class="simbaa-eye" cx="68" cy="64" rx="6.2" ry="7.2" />
-          <ellipse class="simbaa-eye" cx="92" cy="64" rx="5.4" ry="6.4" />
-          <circle class="simbaa-eye-highlight" cx="70.2" cy="60.8" r="1.9" />
-          <circle class="simbaa-eye-highlight" cx="94" cy="61.2" r="1.6" />
+          <ellipse class="simbaa-eye" cx="68" cy="64" rx="5.6" ry="6.5" />
+          <ellipse class="simbaa-eye" cx="92" cy="64" rx="4.9" ry="5.8" />
+          <circle class="simbaa-eye-highlight" cx="70.2" cy="60.8" r="1.7" />
+          <circle class="simbaa-eye-highlight" cx="94" cy="61.2" r="1.4" />
           <path class="simbaa-nose" d="M75 71c0-2.2 2.2-3.5 5-3.5s5 1.3 5 3.5-2.2 3.2-5 3.2-5-1-5-3.2z" />
           <path class="simbaa-mouth" d="M72 78c3 3 5 3 8 3s5 0 8-3" />
         </g>
       ) : family === "excited" ? (
         <g class="simbaa-face">
-          <ellipse class="simbaa-eye" cx="68" cy="63.5" rx="6.6" ry="7.6" />
-          <ellipse class="simbaa-eye" cx="92" cy="63.5" rx="5.8" ry="6.8" />
-          <circle class="simbaa-eye-highlight" cx="70.4" cy="60" r="2.1" />
-          <circle class="simbaa-eye-highlight" cx="94.2" cy="60.4" r="1.8" />
+          <ellipse class="simbaa-eye" cx="68" cy="63.5" rx="5.9" ry="6.8" />
+          <ellipse class="simbaa-eye" cx="92" cy="63.5" rx="5.2" ry="6.1" />
+          <circle class="simbaa-eye-highlight" cx="70.4" cy="60" r="1.9" />
+          <circle class="simbaa-eye-highlight" cx="94.2" cy="60.4" r="1.6" />
           <path class="simbaa-nose" d="M75 71c0-2.2 2.2-3.5 5-3.5s5 1.3 5 3.5-2.2 3.2-5 3.2-5-1-5-3.2z" />
           <path class="simbaa-mouth" d="M70 77c4 5 12 5 20 0" />
           <g class="simbaa-sparkle-ambient" aria-hidden="true">
@@ -220,10 +236,10 @@ function sparkle(cx: number, cy: number, r: number): string {
         <g class="simbaa-face">
           <path class="simbaa-brow-up" d="M61 55c3-3 8-3 11-1" />
           <path class="simbaa-brow-up" d="M88 54c3-3 8-3 11 1" />
-          <ellipse class="simbaa-eye" cx="68" cy="65" rx="6.6" ry="7" />
-          <ellipse class="simbaa-eye" cx="92" cy="65" rx="5.8" ry="6.2" />
-          <circle class="simbaa-eye-highlight" cx="70.2" cy="62" r="1.9" />
-          <circle class="simbaa-eye-highlight" cx="94" cy="62.4" r="1.6" />
+          <ellipse class="simbaa-eye" cx="68" cy="65" rx="5.9" ry="6.3" />
+          <ellipse class="simbaa-eye" cx="92" cy="65" rx="5.2" ry="5.6" />
+          <circle class="simbaa-eye-highlight" cx="70.2" cy="62" r="1.7" />
+          <circle class="simbaa-eye-highlight" cx="94" cy="62.4" r="1.4" />
           <path class="simbaa-nose" d="M75 72c0-2.2 2.2-3.5 5-3.5s5 1.3 5 3.5-2.2 3.2-5 3.2-5-1-5-3.2z" />
           <path class="simbaa-mouth" d="M73 80c2-2 5 2 7 0c2-2 5 2 7 0" />
           {severe && <path class="simbaa-rumble" d="M69 85c3-5 6 5 9 0s6-5 9 0" />}
@@ -232,8 +248,8 @@ function sparkle(cx: number, cy: number, r: number): string {
         <g class="simbaa-face">
           <path class="simbaa-brow-down" d="M61 56c3 3 8 4 11 2" />
           <path class="simbaa-brow-down" d="M88 58c3-2 8-3 11-1" />
-          <ellipse class="simbaa-eye" cx="68" cy="65" rx="5.6" ry="6.2" />
-          <ellipse class="simbaa-eye" cx="92" cy="65" rx="5" ry="5.6" />
+          <ellipse class="simbaa-eye" cx="68" cy="65" rx="5.0" ry="5.6" />
+          <ellipse class="simbaa-eye" cx="92" cy="65" rx="4.5" ry="5.0" />
           <path class="simbaa-nose" d="M75 72c0-2.2 2.2-3.5 5-3.5s5 1.3 5 3.5-2.2 3.2-5 3.2-5-1-5-3.2z" />
           <path class="simbaa-mouth" d="M71 81c5-6 13-6 18 0" />
           {severe && (
@@ -247,8 +263,8 @@ function sparkle(cx: number, cy: number, r: number): string {
       ) : (
         <g class="simbaa-face">
           <path class="simbaa-eye-line simbaa-eye-squint" d="M61 65c3.5-3.5 10.5-3.5 14 0" />
-          <ellipse class="simbaa-eye" cx="92" cy="66" rx="5" ry="5.6" />
-          <circle class="simbaa-eye-highlight" cx="94" cy="63.5" r="1.4" />
+          <ellipse class="simbaa-eye" cx="92" cy="66" rx="4.5" ry="5.0" />
+          <circle class="simbaa-eye-highlight" cx="94" cy="63.5" r="1.3" />
           <path class="simbaa-nose" d="M75 72c0-2.2 2.2-3.5 5-3.5s5 1.3 5 3.5-2.2 3.2-5 3.2-5-1-5-3.2z" />
           <path class="simbaa-mouth" d="M74 78c3 2.5 9 2.5 12 0" />
           <g class="simbaa-dirt" aria-hidden="true">
@@ -381,7 +397,15 @@ function sparkle(cx: number, cy: number, r: number): string {
     fill: var(--simbaa-nose, #ff9aa8);
   }
 
-  .simbaa-eye,
+  /* Warm brown, deliberately NOT the same near-black tone as
+     --simbaa-outline (used for lids/lines/brows) — large eyes filled with
+     the outline color read as a dark mask dominating the face; a lighter,
+     warmer brown keeps them expressive without visually overpowering the
+     now-larger, lighter face plate around them. */
+  .simbaa-eye {
+    fill: var(--simbaa-eye, #6b4226);
+  }
+
   .simbaa-eye-lid {
     fill: var(--simbaa-outline, #5a4b32);
   }

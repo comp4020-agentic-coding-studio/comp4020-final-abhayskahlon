@@ -880,6 +880,37 @@ are visually unaffected. Full suite re-run after the change: 113/113
 still passing, with no test needing updating (the redesign didn't change
 any class name the test suite depends on, only path/coordinate data).
 
+**Second follow-up: the redesigned lamb's face was still too small and
+dark relative to its ears.** Reported directly, with a reference image and
+a screenshot of the result from the first redesign to compare against: the
+face plate (27×24, against an eye fill colored the same near-black as the
+outline strokes) read as "a small dark patch surrounded by wool and
+flanked by oversized ears," not "a large, friendly, lamb-like face."
+
+Fixed with three changes, each checked by rendering several candidates
+before picking one — not guessed and shipped: the face plate enlarged to
+29×27 against the same head-fleece radius (the single biggest lever for
+"face fills most of the head"); every mood branch's eyes given their own
+warm-brown fill (`--simbaa-eye`, `#6b4226`) distinct from
+`--simbaa-outline`'s near-black, and each eye's own `rx`/`ry` reduced by
+10% — large eyes filled with the same tone as the surrounding linework is
+itself what reads as "a dark mask," independent of the face's own size;
+and the ears reduced roughly 30% (`rx` 16→11, `ry` 24→17) while keeping
+the same diagonal, floppy, pink-lined shape, so they stay recognisably
+lamb-like without visually competing with the now-larger face. A
+standalone script generated several face-size/ear-size combinations,
+rendered each to a PNG, and compared them side by side before any of these
+numbers were written into the component — the same verify-before-commit
+discipline the original scalloped-fleece shape was chosen with.
+
+Accessory positions (glasses centered on the eyes, hat anchored to the
+head's top) needed no change: both were already keyed to the same `cx`
+values the eyes/head still use, so they continued to line up correctly
+once rendered and checked directly — confirmed with a full accessory set
+(golden crown, round glasses, scarf) on the now-larger face, not assumed.
+Full suite re-run again: 113/113 passing, only `src/components/
+Simbaa.astro` touched.
+
 ## Decision 16 — shared XP, levels, and level-gated accessories
 
 **Decision.** The room's one shared creature now has a second, independent

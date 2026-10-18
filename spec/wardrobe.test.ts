@@ -181,6 +181,25 @@ describe("wardrobe", () => {
     }
   });
 
+  // Regression guard for Milo's puppy redesign (PROCESS.md, Decision 15's
+  // follow-up): the previous silhouette's two ear shapes were almost
+  // entirely hidden behind the body (narrower than the body itself), which
+  // is exactly the "reads as a generic round creature, not a dog" bug that
+  // prompted the redesign. This doesn't (and can't, from a DOM test alone)
+  // assert that the ears are VISUALLY large enough — that was verified by
+  // rendering and comparing screenshots — but it does lock in that the
+  // distinguishing puppy elements (floppy ears, a distinct muzzle, a nose)
+  // actually exist in the markup for every mood, so a future edit can't
+  // silently drop one of them back out.
+  it("Milo's default appearance always renders floppy ears, a muzzle, and a nose — the puppy-specific silhouette", async () => {
+    const cookie = await newVisitor();
+    const doc = await loadHome(cookie);
+    const ears = doc.querySelectorAll(".milo-ear");
+    expect(ears.length, "expected exactly two floppy ear shapes").toBe(2);
+    expect(doc.querySelector(".milo-muzzle"), "expected a distinct muzzle shape").not.toBeNull();
+    expect(doc.querySelector(".milo-nose"), "expected a nose shape").not.toBeNull();
+  });
+
   it("rejects an unknown slot or an option outside that slot's vocabulary, changing nothing", async () => {
     const cookie = await newVisitor();
     const before = await loadHome(cookie);

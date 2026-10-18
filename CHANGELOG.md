@@ -3,6 +3,15 @@
 What's changed, in plain terms, newest first — read live via `/patch-notes/`
 and summarised on the entry page's own "what's new in COMMONS" section.
 
+## Patch 1.6 — Milo redesigned as a proper puppy
+
+The original character used to read as a generic rounded creature — his
+ears were narrower than his own body and sat almost entirely hidden behind
+it. He now has large floppy ears that clearly extend past the head on both
+sides, a distinct cream muzzle, a small dark nose, warm brown eyes, and a
+happy open smile with a little tongue. Same warm color palette and style
+as the rest of COMMONS — just unmistakably a dog now. Purely a look.
+
 ## Patch 1.5 — Simbaa face proportions, corrected
 
 A follow-up to the lamb redesign: her face was still reading as small and

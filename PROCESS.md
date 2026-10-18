@@ -911,6 +911,77 @@ once rendered and checked directly — confirmed with a full accessory set
 Full suite re-run again: 113/113 passing, only `src/components/
 Simbaa.astro` touched.
 
+**Third follow-up: Milo himself — the original, default appearance — was
+redesigned to actually read as a dog, not a generic rounded creature.**
+Reported directly, with a reference puppy illustration. Root cause
+diagnosed by direct measurement, not assumption: the old ear shapes
+(`rx` 15 / an asymmetric path roughly 15–21 wide) sat against a body
+spanning roughly `x=26` to `x=134` — narrower than the body itself and
+positioned almost entirely behind it, so neither ear was ever visible as
+its own shape once the body was drawn on top. A silhouette with no visible
+ears, one uniform body color, and no muzzle is exactly what reads as "a
+generic round pet," independent of the face drawn on top of it.
+
+Fixed with new floppy-ear teardrop paths, anchored high on the head and
+drooping down and OUTWARD well past the body's own width — deliberately
+made large enough that a real, visible sliver of ear shows on both sides,
+confirmed by rendering several candidate sizes (three full iterations,
+each one screenshotted) before the final shape was chosen, the same
+discipline every other appearance's geometry in this file was already
+held to. A distinct cream muzzle (a separate ellipse layered on the head,
+not just a color change to the same body shape) is the other main fix —
+it was this detail's complete absence, not just small ears, that let the
+previous design read as "bear" rather than "dog." The ears are also given
+their own, deliberately darker tan (`--milo-ear`) instead of reusing the
+body's own fill, so they read as a distinct feature rather than blending
+into the silhouette around them. A small dark nose and an open, happy
+mouth with a visible pink tongue were added to the two warmest mood
+states (`happy`/`excited`), matching the reference; every other mood
+state keeps its existing expression logic, now drawn against the new
+muzzle/nose geometry instead of the old plain face area.
+
+Also fixed in the same pass, following Simbaa's own second follow-up: eye
+fill moved from `--milo-outline`'s near-black to a dedicated warm brown
+(`--milo-eye`), since a large eye in the same tone as the surrounding
+linework reads as a dominating dark mask regardless of the eye's own
+size — the same lesson already learned and documented above, applied
+here before anyone had to report it a second time for a second
+appearance.
+
+**The body silhouette itself was deliberately left unchanged.** It was
+never the part of the original design that read wrong — isolating the fix
+to the ears, muzzle, nose, mouth, and eye color (not a full re-draw) is
+both the more conservative change and what keeps Milo's overall
+proportions consistent with the "body path reused across appearances"
+pattern the other four already establish.
+
+**Accessories.** Hat/neckwear positions needed no change — all are
+anchored above/below the head-body boundary, which didn't move. Glasses
+were repositioned from `cy=76` to `cy=68` to track the eyes' own slightly
+higher position in the new face layout (confirmed by rendering: equipped
+glasses now sit directly over the new eye position rather than floating
+below it).
+
+**Tests.** `spec/wardrobe.test.ts` gained one new test asserting the three
+puppy-specific elements (`.milo-ear` ×2, `.milo-muzzle`, `.milo-nose`)
+are present on a freshly hosted room's default Milo — a markup-level
+regression guard against this exact "silhouette lost its distinguishing
+features" class of bug, though (stated plainly) it cannot by itself prove
+the ears are large enough to read correctly; that was verified by
+rendering and visually comparing screenshots, the same way every
+appearance redesign in this file has been. All five existing wardrobe
+tests (`.milo-hat-top`, `.milo-scarf`, `.milo-hat-party`, `.milo-bow-tie`,
+`.milo-round-glasses`) still pass unchanged, since every one of those
+class names was preserved. Full suite: 114/114 passing. Verified by
+rendering: Milo at normal size, at the small size the SVG renders at
+inline, asleep, low-energy (sleepy-family), messy, and wearing a full
+accessory set (golden crown, round glasses, bow tie) — face, muzzle, and
+mouth stay visible and unobscured in every case; the entry page's own
+decorative Milo illustration (`src/pages/index.astro`, unrelated code,
+same component) was also re-checked and renders correctly with no change
+needed there. The other four appearances and the appearance selector are
+visually unaffected — only `src/components/Milo.astro` was touched.
+
 ## Decision 16 — shared XP, levels, and level-gated accessories
 
 **Decision.** The room's one shared creature now has a second, independent

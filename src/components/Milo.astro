@@ -21,6 +21,25 @@
 // group while that attribute is present. See index.astro's script for why
 // that attribute can only ever be set by the tab whose own action actually
 // succeeded.
+//
+// Redesigned (reported directly, against a reference puppy illustration):
+// the previous silhouette — one round body plus two small, mismatched ear
+// shapes tucked almost entirely behind it — read as "a generic rounded
+// creature," not specifically a dog. The root cause was the ears: at
+// rx 15/18 against a body spanning roughly x=26 to x=134, both earlier ear
+// shapes were narrower than the body itself and sat almost fully behind
+// it, so neither one was ever visible as its own shape. The new ears are
+// large floppy teardrops, anchored high on the head and drooping down and
+// OUTWARD well past the body's own width (confirmed by rendering several
+// candidate sizes before choosing — a true puppy needs a real, visible
+// sliver of ear on both sides, not a hint of color at the body's edge).
+// Also new: a distinct cream muzzle/forehead blaze (the thing that
+// actually reads as "dog" rather than "bear," which the old uniform-color
+// body never had at all), a small dark nose, and an open, happy mouth with
+// a visible pink tongue for the two warmest moods. The body silhouette
+// itself (the path below) is intentionally UNCHANGED from before — it was
+// never the problem, and reusing it keeps Milo's proportions consistent
+// with the other four appearances' own body-path conventions.
 import type { Activity, HatOption, NeckwearOption, Stats } from "../lib/creature";
 import { computeMood } from "./mood";
 
@@ -47,21 +66,34 @@ function sparkle(cx: number, cy: number, r: number): string {
 
 <div class={`milo-visual milo-${family}`} data-severe={severe ? "true" : "false"}>
   <svg viewBox="0 0 160 160" class="milo-svg" role="img" aria-label={`Milo, ${sleeping ? "asleep" : family}`}>
-    <!-- stubby feet, drawn first so the body overlaps their tops -->
+    <!-- stubby feet with small paw pads, drawn first so the body overlaps their tops -->
     <ellipse class="milo-foot" cx="58" cy="144" rx="11" ry="6" />
     <ellipse class="milo-foot" cx="102" cy="144" rx="11" ry="6" />
+    <ellipse class="milo-paw-pad" cx="58" cy="145" rx="3.5" ry="2.2" />
+    <ellipse class="milo-paw-pad" cx="102" cy="145" rx="3.5" ry="2.2" />
 
     <!-- tail, peeking from behind the body -->
     <path class="milo-tail" d="M126 108c17-3 22 13 10 19-8 4-15-2-13-11 1-4 1-6 3-8z" />
 
-    <!-- ears: deliberately asymmetric — one larger and rounded, one
-         smaller and pointed, so the silhouette alone (no face at all)
-         still reads as Milo rather than a generic rounded pet icon. This
+    <!-- floppy puppy ears: large teardrops anchored high on the head,
+         drooping down and OUTWARD past the body's own width so a real,
+         visible ear shows on both sides — the main fix for the original
+         "generic round creature" problem (see comment above). A
+         deliberately darker tan than the body/head so the ears read as
+         their own feature, not just more of the same fill color. This
          silhouette never changes between expressions. -->
-    <ellipse class="milo-body-fill" cx="46" cy="30" rx="15" ry="21" transform="rotate(-18 46 30)" />
-    <path class="milo-body-fill" d="M106 19c11-6 23 3 18 16-3 9-14 14-21 9-7-6-6-20 3-25z" />
+    <path
+      class="milo-ear"
+      d="M44 30c-26 0-44 22-40 48 3 18 15 32 30 36 -8-20-12-40-6-58 4-12 10-20 16-26z"
+    />
+    <path
+      class="milo-ear"
+      d="M116 30c26 0 44 22 40 48 -3 18-15 32-30 36 8-20 12-40 6-58 -4-12-10-20-16-26z"
+    />
 
-    <!-- body -->
+    <!-- body: unchanged from before — this was never the part of the
+         silhouette that read wrong, and keeping it keeps Milo's overall
+         proportions consistent with the other four appearances. -->
     <path
       class="milo-body-fill"
       d="M80 18c31 0 52 24 54 57 2 27-10 55-37 63-11 3-23 3-34 0-27-8-39-36-37-63 2-33 23-57 54-57z"
@@ -70,9 +102,21 @@ function sparkle(cx: number, cy: number, r: number): string {
     <!-- belly marking: one consistent detail across every state -->
     <ellipse class="milo-belly" cx="80" cy="102" rx="26" ry="29" />
 
+    <!-- cream muzzle: a distinct, lighter shape around the nose/mouth —
+         the single detail most responsible for reading as "dog" rather
+         than "bear," which the previous uniform-tan body never had. -->
+    <ellipse class="milo-muzzle" cx="80" cy="86" rx="23" ry="19" />
+
+    <!-- a soft cream forehead blaze between the eyes, a small extra detail
+         matching the reference's own light marking above the muzzle. -->
+    <path
+      class="milo-blaze"
+      d="M80 44c-5 6-7 14-5 22 2-2 4-3 5-3s3 1 5 3c2-8 0-16-5-22z"
+    />
+
     <!-- cheeks -->
-    <ellipse class="milo-cheek" cx="54" cy="90" rx="8" ry="5" />
-    <ellipse class="milo-cheek" cx="106" cy="90" rx="8" ry="5" />
+    <ellipse class="milo-cheek" cx="55" cy="86" rx="7" ry="4.5" />
+    <ellipse class="milo-cheek" cx="105" cy="86" rx="7" ry="4.5" />
 
     <!-- wardrobe: shared, cosmetic, always reflecting the one real stored
          choice (see src/lib/schema.ts's hat/neckwear columns) — never a
@@ -163,9 +207,10 @@ function sparkle(cx: number, cy: number, r: number): string {
     {
       sleeping ? (
         <g class="milo-face milo-face-sleeping">
-          <path class="milo-eye-line" d="M48 74c5-5 13-5 18 0" />
-          <path class="milo-eye-line" d="M94 74c5-5 13-5 18 0" />
-          <path class="milo-mouth" d="M72 96c5 4 11 4 16 0" />
+          <path class="milo-eye-line" d="M51 67c4-4 11-4 15 0" />
+          <path class="milo-eye-line" d="M88 67c4-4 11-4 15 0" />
+          <ellipse class="milo-nose" cx="80" cy="81" rx="5.5" ry="4" />
+          <path class="milo-mouth" d="M72 90c5 4 11 4 16 0" />
           <g class="milo-zzz" aria-hidden="true">
             <text x="112" y="46" class="milo-zzz-char milo-zzz-1">z</text>
             <text x="124" y="34" class="milo-zzz-char milo-zzz-2">z</text>
@@ -174,19 +219,27 @@ function sparkle(cx: number, cy: number, r: number): string {
         </g>
       ) : family === "happy" ? (
         <g class="milo-face">
-          <ellipse class="milo-eye" cx="56" cy="76" rx="10" ry="11" />
-          <ellipse class="milo-eye" cx="103" cy="76" rx="8.5" ry="9.5" />
-          <circle class="milo-eye-highlight" cx="59.5" cy="71.5" r="2.6" />
-          <circle class="milo-eye-highlight" cx="105.5" cy="72" r="2.2" />
-          <path class="milo-mouth" d="M64 97c7 8 25 8 32 0" />
+          <ellipse class="milo-eye" cx="63" cy="68" rx="7.2" ry="8.3" />
+          <ellipse class="milo-eye" cx="97" cy="68" rx="6.3" ry="7.3" />
+          <circle class="milo-eye-highlight" cx="65.5" cy="64" r="2.3" />
+          <circle class="milo-eye-highlight" cx="99" cy="64.3" r="2" />
+          <ellipse class="milo-nose" cx="80" cy="81" rx="5.5" ry="4" />
+          <ellipse class="milo-nose-shine" cx="78.5" cy="79.5" rx="1.3" ry="0.9" />
+          <path class="milo-tongue-stem" d="M80 85v3.5" />
+          <path class="milo-mouth" d="M66 89c3 7 9 10 14 10s11-3 14-10" />
+          <path class="milo-tongue" d="M73 93.5c2 3.5 5 5 7 5s5-1.5 7-5c0 4-3 8-7 8s-7-4-7-8z" />
         </g>
       ) : family === "excited" ? (
         <g class="milo-face">
-          <ellipse class="milo-eye" cx="56" cy="76" rx="10.5" ry="11.5" />
-          <ellipse class="milo-eye" cx="103" cy="76" rx="9" ry="10" />
-          <circle class="milo-eye-highlight" cx="59.5" cy="71" r="3" />
-          <circle class="milo-eye-highlight" cx="106" cy="71.5" r="2.6" />
-          <path class="milo-mouth" d="M60 96c8 11 32 11 40 0" />
+          <ellipse class="milo-eye" cx="63" cy="67.5" rx="7.6" ry="8.8" />
+          <ellipse class="milo-eye" cx="97" cy="67.5" rx="6.7" ry="7.8" />
+          <circle class="milo-eye-highlight" cx="65.7" cy="63.3" r="2.6" />
+          <circle class="milo-eye-highlight" cx="99.4" cy="63.7" r="2.3" />
+          <ellipse class="milo-nose" cx="80" cy="80.5" rx="5.5" ry="4" />
+          <ellipse class="milo-nose-shine" cx="78.5" cy="79" rx="1.3" ry="0.9" />
+          <path class="milo-tongue-stem" d="M80 84.5v3.5" />
+          <path class="milo-mouth" d="M63 88c4 9 11 13 17 13s13-4 17-13" />
+          <path class="milo-tongue" d="M72 93c2 4.5 6 6.5 8 6.5s6-2 8-6.5c0 5-3.5 10-8 10s-8-5-8-10z" />
           <g class="milo-sparkle-ambient" aria-hidden="true">
             <path d={sparkle(18, 44, 6.5)} />
             <path d={sparkle(136, 38, 6)} />
@@ -194,56 +247,58 @@ function sparkle(cx: number, cy: number, r: number): string {
         </g>
       ) : family === "sleepy" ? (
         <g class="milo-face">
-          <path class="milo-eye-lid" d="M47 72c4-3 14-3 18 0l-1 6c-4 2-12 2-16 0z" />
-          <path class="milo-eye-lid" d="M95 72c4-3 13-3 17 0l-1 6c-4 2-11 2-15 0z" />
-          <path class="milo-eye-bag" d="M48 81c3 2 11 2 15 0" />
-          <path class="milo-eye-bag" d="M96 81c3 2 10 2 14 0" />
+          <path class="milo-eye-lid" d="M54 65c3.5-3 11-3 14.5 0l-1 5c-3.5 2-9.5 2-12.5 0z" />
+          <path class="milo-eye-lid" d="M91 65c3.5-3 10.5-3 14 0l-1 5c-3.5 2-9 2-12.5 0z" />
+          <ellipse class="milo-nose" cx="80" cy="81" rx="5.5" ry="4" />
           {severe ? (
             <>
-              <ellipse class="milo-mouth-open" cx="80" cy="99" rx="6.5" ry="5.5" />
-              <text x="100" y="66" class="milo-zzz-char milo-zzz-solo">z</text>
+              <ellipse class="milo-mouth-open" cx="80" cy="93" rx="6" ry="5" />
+              <text x="100" y="60" class="milo-zzz-char milo-zzz-solo">z</text>
             </>
           ) : (
-            <path class="milo-mouth" d="M68 98c4 2 20 2 24 0" />
+            <path class="milo-mouth" d="M70 91c4 2 16 2 20 0" />
           )}
         </g>
       ) : family === "hungry" ? (
         <g class="milo-face">
-          <path class="milo-brow-up" d="M48 65c3-3 9-3 12-1" />
-          <path class="milo-brow-up" d="M100 64c3-3 9-3 12 1" />
-          <ellipse class="milo-eye" cx="56" cy="78" rx="10.5" ry="11" />
-          <ellipse class="milo-eye" cx="103" cy="78" rx="9" ry="9.5" />
-          <circle class="milo-eye-highlight" cx="59" cy="74" r="2.8" />
-          <circle class="milo-eye-highlight" cx="105.5" cy="74.5" r="2.3" />
-          <path class="milo-mouth" d="M68 99c3-3 9 3 12 0c3-3 9 3 12 0" />
-          {severe && <path class="milo-rumble" d="M66 103c4-6 8 6 12 0s8-6 12 0" />}
+          <path class="milo-brow-up" d="M53 58c3-3 9-3 12-1" />
+          <path class="milo-brow-up" d="M95 57c3-3 9-3 12 1" />
+          <ellipse class="milo-eye" cx="63" cy="69" rx="7.6" ry="8" />
+          <ellipse class="milo-eye" cx="97" cy="69" rx="6.7" ry="7" />
+          <circle class="milo-eye-highlight" cx="65.5" cy="65.5" r="2.4" />
+          <circle class="milo-eye-highlight" cx="99" cy="65.9" r="2.1" />
+          <ellipse class="milo-nose" cx="80" cy="82" rx="5.5" ry="4" />
+          <path class="milo-mouth" d="M70 92c3-3 9 3 12 0c3-3 9 3 12 0" />
+          {severe && <path class="milo-rumble" d="M68 96c4-6 8 6 12 0s8-6 12 0" />}
         </g>
       ) : family === "sad" ? (
         <g class="milo-face">
-          <path class="milo-brow-down" d="M48 67c3 3 9 4 12 2" />
-          <path class="milo-brow-down" d="M100 69c3-2 9-3 12-1" />
-          <ellipse class="milo-eye" cx="56" cy="78" rx="9" ry="9.5" />
-          <ellipse class="milo-eye" cx="103" cy="78" rx="8" ry="8.5" />
-          <path class="milo-mouth" d="M64 101c7-8 25-8 32 0" />
+          <path class="milo-brow-down" d="M53 60c3 3 9 4 12 2" />
+          <path class="milo-brow-down" d="M95 62c3-2 9-3 12-1" />
+          <ellipse class="milo-eye" cx="63" cy="69" rx="6.5" ry="6.9" />
+          <ellipse class="milo-eye" cx="97" cy="69" rx="5.8" ry="6.2" />
+          <ellipse class="milo-nose" cx="80" cy="82" rx="5.5" ry="4" />
+          <path class="milo-mouth" d="M67 94c7-8 19-8 26 0" />
           {severe && (
             <g class="milo-cloud" aria-hidden="true">
-              <path d="M58 18c-5 0-8 3-9 6-4 1-7 4-7 8 0 4 4 7 8 7h23c4 0 7-3 7-7 0-3-2-6-5-7 0-5-4-9-9-9-3 0-6 1-8 2z" />
-              <path class="milo-raindrop milo-raindrop-1" d="M58 42v5" />
-              <path class="milo-raindrop milo-raindrop-2" d="M70 44v5" />
+              <path d="M58 16c-5 0-8 3-9 6-4 1-7 4-7 8 0 4 4 7 8 7h23c4 0 7-3 7-7 0-3-2-6-5-7 0-5-4-9-9-9-3 0-6 1-8 2z" />
+              <path class="milo-raindrop milo-raindrop-1" d="M58 40v5" />
+              <path class="milo-raindrop milo-raindrop-2" d="M70 42v5" />
             </g>
           )}
         </g>
       ) : (
         <g class="milo-face">
-          <path class="milo-eye-line milo-eye-squint" d="M47 75c4-4 13-4 18 0" />
-          <ellipse class="milo-eye" cx="103" cy="77" rx="7.5" ry="8" />
-          <circle class="milo-eye-highlight" cx="105" cy="74" r="1.8" />
-          <path class="milo-mouth" d="M70 98c4 3 12 3 16 0" />
+          <path class="milo-eye-line milo-eye-squint" d="M53 68c3.5-3.5 10.5-3.5 14 0" />
+          <ellipse class="milo-eye" cx="97" cy="69" rx="5.8" ry="6.2" />
+          <circle class="milo-eye-highlight" cx="99" cy="66.5" r="1.6" />
+          <ellipse class="milo-nose" cx="80" cy="82" rx="5.5" ry="4" />
+          <path class="milo-mouth" d="M72 92c4 3 12 3 16 0" />
           <g class="milo-dirt" aria-hidden="true">
-            <ellipse cx="64" cy="116" rx="2.6" ry="1.8" transform="rotate(20 64 116)" />
-            <ellipse cx="94" cy="120" rx="2.2" ry="1.6" transform="rotate(-15 94 120)" />
-            <ellipse cx="74" cy="127" rx="2" ry="1.5" />
-            <ellipse cx="100" cy="109" rx="1.8" ry="1.4" />
+            <ellipse cx="60" cy="108" rx="2.6" ry="1.8" transform="rotate(20 60 108)" />
+            <ellipse cx="98" cy="112" rx="2.2" ry="1.6" transform="rotate(-15 98 112)" />
+            <ellipse cx="72" cy="119" rx="2" ry="1.5" />
+            <ellipse cx="102" cy="101" rx="1.8" ry="1.4" />
           </g>
           {severe && (
             <>
@@ -259,22 +314,24 @@ function sparkle(cx: number, cy: number, r: number): string {
         they occupy the same screen area as the eyes, so drawing them
         earlier let the face's own eye shapes paint over them, hiding them
         entirely — found and fixed during visual verification, not assumed
-        correct from reading the code alone. */}
+        correct from reading the code alone. Repositioned to the new,
+        slightly higher eye line (cy≈68, was 76) so they still sit directly
+        over the eyes rather than floating below them. */}
     {
       glasses === "round-glasses" && (
         <g class="milo-wardrobe milo-round-glasses" aria-hidden="true">
-          <circle cx="56" cy="76" r="9" />
-          <circle cx="104" cy="76" r="9" />
-          <path d="M65 76h30" />
+          <circle cx="63" cy="68" r="9" />
+          <circle cx="97" cy="68" r="9" />
+          <path d="M72 68h16" />
         </g>
       )
     }
     {
       glasses === "heart-glasses" && (
         <g class="milo-wardrobe milo-heart-glasses" aria-hidden="true">
-          <path d="M56 71c-3-3-8-2-8 2 0 3 4 6 8 9 4-3 8-6 8-9 0-4-5-5-8-2z" />
-          <path d="M104 71c-3-3-8-2-8 2 0 3 4 6 8 9 4-3 8-6 8-9 0-4-5-5-8-2z" />
-          <path d="M64 76h32" />
+          <path d="M63 63c-3-3-8-2-8 2 0 3 4 6 8 9 4-3 8-6 8-9 0-4-5-5-8-2z" />
+          <path d="M97 63c-3-3-8-2-8 2 0 3 4 6 8 9 4-3 8-6 8-9 0-4-5-5-8-2z" />
+          <path d="M71 68h18" />
         </g>
       )
     }
@@ -329,21 +386,35 @@ function sparkle(cx: number, cy: number, r: number): string {
   }
 
   .milo-body-fill {
-    fill: var(--milo-body, #ffb38a);
-    stroke: var(--milo-outline, #5a3b2c);
+    fill: var(--milo-body, #f0b374);
+    stroke: var(--milo-outline, #6b4a2f);
     stroke-width: 3;
     stroke-linejoin: round;
   }
 
   .milo-foot {
-    fill: var(--milo-body, #ffb38a);
-    stroke: var(--milo-outline, #5a3b2c);
+    fill: var(--milo-body, #f0b374);
+    stroke: var(--milo-outline, #6b4a2f);
     stroke-width: 3;
   }
 
+  .milo-paw-pad {
+    fill: var(--milo-ear, #c88a52);
+  }
+
   .milo-tail {
-    fill: var(--milo-body, #ffb38a);
-    stroke: var(--milo-outline, #5a3b2c);
+    fill: var(--milo-body, #f0b374);
+    stroke: var(--milo-outline, #6b4a2f);
+    stroke-width: 3;
+    stroke-linejoin: round;
+  }
+
+  /* Deliberately a darker tan than the body/head fill, not the same color
+     — this is what makes the ears read as their own feature rather than
+     disappearing into the rest of the silhouette. */
+  .milo-ear {
+    fill: var(--milo-ear, #c88a52);
+    stroke: var(--milo-outline, #6b4a2f);
     stroke-width: 3;
     stroke-linejoin: round;
   }
@@ -353,21 +424,44 @@ function sparkle(cx: number, cy: number, r: number): string {
     stroke: none;
   }
 
+  .milo-muzzle {
+    fill: var(--milo-muzzle, #fdf0da);
+    stroke: var(--milo-outline, #6b4a2f);
+    stroke-width: 2;
+  }
+
+  .milo-blaze {
+    fill: var(--milo-muzzle, #fdf0da);
+    opacity: 0.85;
+  }
+
   .milo-cheek {
     fill: #ff8fa3;
     opacity: 0.45;
     transform-origin: center;
   }
 
+  .milo-nose {
+    fill: var(--milo-nose, #2b2420);
+  }
+
+  .milo-nose-shine {
+    fill: #fff;
+    opacity: 0.6;
+  }
+
+  /* Warm brown eyes, distinct from the darker outline color — large eyes
+     filled with the same near-black tone as the linework is what reads as
+     a dominating dark mask, independent of how big the eyes themselves are. */
   .milo-eye,
   .milo-eye-lid {
-    fill: var(--milo-outline, #3a2a20);
+    fill: var(--milo-eye, #4a3220);
   }
 
   .milo-eye-line,
   .milo-eye-squint {
     fill: none;
-    stroke: var(--milo-outline, #3a2a20);
+    stroke: var(--milo-eye, #4a3220);
     stroke-width: 3;
     stroke-linecap: round;
   }
@@ -378,7 +472,7 @@ function sparkle(cx: number, cy: number, r: number): string {
   .milo-rumble,
   .milo-stink {
     fill: none;
-    stroke: var(--milo-outline, #3a2a20);
+    stroke: var(--milo-outline, #6b4a2f);
     stroke-width: 2;
     stroke-linecap: round;
     opacity: 0.55;
@@ -388,21 +482,28 @@ function sparkle(cx: number, cy: number, r: number): string {
     fill: #fff;
   }
 
-  .milo-mouth {
+  .milo-mouth,
+  .milo-tongue-stem {
     fill: none;
-    stroke: var(--milo-outline, #3a2a20);
-    stroke-width: 3;
+    stroke: var(--milo-outline, #6b4a2f);
+    stroke-width: 2;
     stroke-linecap: round;
   }
 
+  .milo-tongue {
+    fill: #ff9aa8;
+    stroke: var(--milo-outline, #6b4a2f);
+    stroke-width: 1;
+  }
+
   .milo-mouth-open {
-    fill: var(--milo-outline, #3a2a20);
+    fill: var(--milo-outline, #6b4a2f);
     opacity: 0.85;
   }
 
   /* ---------- wardrobe: shared, cosmetic, never a per-viewer preference ---------- */
   .milo-wardrobe {
-    stroke: var(--milo-outline, #3a2a20);
+    stroke: var(--milo-outline, #6b4a2f);
     stroke-width: 1.6;
     stroke-linejoin: round;
   }
@@ -487,29 +588,39 @@ function sparkle(cx: number, cy: number, r: number): string {
   /* ---------- mood tints: the one place body colour changes ---------- */
   .milo-happy,
   .milo-excited {
-    --milo-body: #ffb38a;
+    --milo-body: #f0b374;
     --milo-belly: #ffd9b8;
+    --milo-muzzle: #fdf0da;
+    --milo-ear: #c88a52;
   }
 
   .milo-sleepy,
   .milo-sleeping {
     --milo-body: #cdd6e0;
     --milo-belly: #e3e9ef;
+    --milo-muzzle: #eef2f6;
+    --milo-ear: #aab6c4;
   }
 
   .milo-hungry {
     --milo-body: #f2b98f;
     --milo-belly: #f8ddc4;
+    --milo-muzzle: #fdf1de;
+    --milo-ear: #d19a68;
   }
 
   .milo-sad {
     --milo-body: #b9cae4;
     --milo-belly: #dbe6f3;
+    --milo-muzzle: #e9f0f8;
+    --milo-ear: #9bb0d1;
   }
 
   .milo-messy {
     --milo-body: #c7a179;
     --milo-belly: #dcc19c;
+    --milo-muzzle: #e8d4b8;
+    --milo-ear: #a37e54;
   }
 
   .milo-sparkle-ambient path {

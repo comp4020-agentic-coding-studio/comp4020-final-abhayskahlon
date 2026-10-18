@@ -80,8 +80,10 @@ async function freshSession(): Promise<string> {
   return extractSessionCookie(res);
 }
 
+// "?enter=1": the entry page is the default for a bare GET / even once a
+// session has a room — see src/pages/index.astro's showEntry comment.
 async function loadHome(cookie: string): Promise<Document> {
-  const res = await fetch(new URL("/", baseUrl), { headers: { cookie } });
+  const res = await fetch(new URL("/?enter=1", baseUrl), { headers: { cookie } });
   return new JSDOM(await res.text()).window.document;
 }
 

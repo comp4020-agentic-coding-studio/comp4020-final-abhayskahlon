@@ -18,11 +18,21 @@ import "../styles.css";
 const session = getOrCreateSession(Astro.cookies);
 const room = getSessionRoom(session);
 
-// `?switch=1` is the one deliberate way back to the entry experience while
-// already in a room (the "switch room" link below) — distinct from `!room`,
-// which is every first-time visitor. Neither path is a redirect: both just
-// render the entry markup instead of Milo's, from the same GET /.
-const showEntry = !room || Astro.url.searchParams.has("switch");
+// The entry page is the default for a bare GET / even when the session
+// already belongs to a room — a deliberate choice, made so a returning
+// visitor always explicitly chooses to re-enter their room rather than
+// landing on it silently. `?enter=1` is the one way to reach the room view
+// directly: every internal link that means "go to my room" (the mutating
+// routes' redirects, the client script's own post-host/join navigation,
+// refreshLiveState()'s re-fetch) sets it explicitly, so the normal care
+// loop and live updates are completely unaffected — only a context-free
+// visit to the bare URL (a fresh page load, a bookmark, reopening the tab)
+// shows the entry page. `?switch=1` still exists as an explicit alias for
+// the same thing `enter` being ABSENT already does, kept only so the
+// existing "Switch room" link and any bookmarked copies of it keep
+// working; it is never the mechanism a fresh visit relies on, since a
+// fresh visit's URL has neither parameter.
+const showEntry = !room || !Astro.url.searchParams.has("enter") || Astro.url.searchParams.has("switch");
 
 const state = showEntry || !room ? null : getCreatureState(room.id);
 const age = state && room ? formatMiloAge(room.createdAt) : null;
@@ -109,6 +119,23 @@ const activityPhrase =
               One shared {CREATURE_NAME}, looked after by everyone in the same room — not a separate pet for each of
               you. Enter your name, then join a room with its code or start a brand-new one.
             </p>
+
+            {
+              /* Shown only when this session's cookie already names a room
+                 (room !== null) — e.g. a bookmark, a reopened tab, or
+                 `?switch=1` from inside a room, not a first-time visitor.
+                 This is the explicit "re-enter" affordance Option B needs:
+                 the session and its room membership were never touched by
+                 making the entry page the default, so a returning visitor
+                 can always get straight back in without re-joining or
+                 re-hosting anything, via `?enter=1` — the same parameter
+                 every internal "go to my room" link already uses. */
+              room && (
+                <p class="entry-returning">
+                  You're still in room <strong>{room.id}</strong> — <a href="/?enter=1">continue to your room</a>
+                </p>
+              )
+            }
 
             <div class="entry-choices">
               {/* Validated server-side by src/pages/api/rooms/join.ts — this
@@ -500,7 +527,11 @@ const activityPhrase =
               // to move from "no room" to "this room's Milo" — unlike the
               // care/activity forms, which stay on the same page shape
               // before and after, so they keep using refreshLiveState().
-              location.href = "/";
+              // "/?enter=1", not "/": hosting/joining just succeeded
+              // (res.redirected is true), so this should land directly on
+              // the room view, not bounce back to the entry page the way a
+              // bare "/" now would (see showEntry's comment).
+              location.href = "/?enter=1";
               return;
             }
             // Success: re-fetch and swap the COMPLETE live state — stats,
@@ -627,7 +658,16 @@ const activityPhrase =
       let refreshSeq = 0;
       async function refreshLiveState() {
         const seq = ++refreshSeq;
-        const res = await fetch("/", { cache: "no-store" });
+        // "/?enter=1", not "/": this only ever runs from a page that
+        // already rendered #live-state (after this tab's own action, or an
+        // SSE "update" from another tab in the same room — see the comment
+        // at this function's only two call sites), so the fetch has to ask
+        // for the room view explicitly now that a bare "/" shows the entry
+        // page by default (see showEntry's comment in the frontmatter
+        // above). Without this, the parsed response would have no
+        // #live-state node at all, and the `if (!next ...) return` guard
+        // below would silently stop every live update from ever applying.
+        const res = await fetch("/?enter=1", { cache: "no-store" });
         if (seq !== refreshSeq) return; // superseded by a newer refresh while this one was in flight
         if (!res.ok) return; // never parse or inject a non-OK response's body
         const html = await res.text();

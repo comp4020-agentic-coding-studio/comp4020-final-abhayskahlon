@@ -318,6 +318,30 @@ main :where(pre code) {
    uses (--color-surface-alt, --color-border, --radius-lg) rather than
    introducing a second visual language. */
 
+/* Shown only when the session already has a room — the explicit
+   "re-enter" affordance for a returning visitor landing on the entry page
+   by default (see index.astro). A rounded banner, not a pill: a pill's
+   fixed vertical padding doesn't give wrapped text (room code + link, at
+   narrower widths) anywhere sensible to go, where a block element just
+   grows. Same surface/border/radius as every other callout on this page. */
+.entry-returning {
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  margin: 0 0 var(--space-4);
+  font-size: 0.9rem;
+  color: var(--color-muted);
+}
+
+.entry-returning strong {
+  color: var(--color-text);
+}
+
+.entry-returning a {
+  font-weight: 600;
+}
+
 .entry-choices {
   display: flex;
   flex-direction: column;

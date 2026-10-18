@@ -32,5 +32,7 @@ export const POST: APIRoute = async ({ request, redirect, cookies }) => {
     return new Response(outcome.reason, { status: 404 });
   }
 
-  return redirect("/", 303);
+  // "/?enter=1": joining is itself an explicit, deliberate choice to enter
+  // a room — see host.ts's identical comment.
+  return redirect("/?enter=1", 303);
 };

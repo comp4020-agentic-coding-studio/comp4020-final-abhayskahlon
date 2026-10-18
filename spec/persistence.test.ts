@@ -86,7 +86,11 @@ describe("persistence across a restart", () => {
     });
     expect(act.status).toBe(303);
 
-    const beforeRestart = await (await fetch(new URL("/", first.baseUrl), { headers: { cookie } })).text();
+    // "?enter=1": the entry page is the default for a bare GET / even for a
+    // session that already has a room — see src/pages/index.astro's
+    // showEntry comment. This test needs the room view itself (the care
+    // history it asserts on below).
+    const beforeRestart = await (await fetch(new URL("/?enter=1", first.baseUrl), { headers: { cookie } })).text();
     expect(beforeRestart).toContain("fed Milo");
 
     first.proc.kill();
@@ -97,10 +101,11 @@ describe("persistence across a restart", () => {
     const second = await startApp(dbPath);
     runningProc = second.proc;
 
-    const afterRestart = await (await fetch(new URL("/", second.baseUrl), { headers: { cookie } })).text();
+    const afterRestart = await (await fetch(new URL("/?enter=1", second.baseUrl), { headers: { cookie } })).text();
     // Room membership survived (the returning cookie is still recognised as
-    // belonging to its room, so it sees Milo's page at all, not the entry
-    // form), and so did the care history it wrote before the restart.
+    // belonging to its room, so "?enter=1" reaches Milo's page at all, not
+    // a 403 or some other failure), and so did the care history it wrote
+    // before the restart.
     expect(afterRestart).toContain("fed Milo");
     expect(afterRestart).not.toContain('id="entry-heading"');
 

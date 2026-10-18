@@ -17,6 +17,13 @@ function isActionName(value: string): value is ActionName {
 // never coerced into something valid, and never recorded in the care
 // history (performAction only inserts a care_events row on success).
 //
+// Redirects to "/?enter=1", not "/": since the entry page became the
+// default for a bare GET / (src/pages/index.astro), every internal link
+// that means "go back to my room" has to say so explicitly. Without this,
+// every single successful action would bounce the visitor back to the
+// entry screen instead of back to Milo — not just the "which page greets
+// a fresh visit" behaviour this was meant to change.
+//
 // The room this action applies to is ALWAYS session.roomId — read from the
 // trusted, httpOnly session cookie, never from the request body or any
 // other client-supplied value (docs/adr/0002-multi-room-identity-and-
@@ -43,5 +50,5 @@ export const POST: APIRoute = async ({ request, redirect, cookies }) => {
     return new Response(outcome.reason, { status: 409 });
   }
 
-  return redirect("/", 303);
+  return redirect("/?enter=1", 303);
 };

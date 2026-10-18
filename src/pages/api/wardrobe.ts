@@ -42,5 +42,8 @@ export const POST: APIRoute = async ({ request, redirect, cookies }) => {
 
   performWardrobeChange(slot, value, session, session.roomId);
 
-  return redirect("/", 303);
+  // "/?enter=1", not "/" — see api/actions.ts's comment: the entry page is
+  // now the default for a bare GET /, so every "go back to my room"
+  // redirect has to say so explicitly.
+  return redirect("/?enter=1", 303);
 };

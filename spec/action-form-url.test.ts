@@ -51,7 +51,13 @@ async function loadRoomHome(): Promise<Document> {
   const cookie = extractSessionCookie(visit);
   const hostRes = await post("/api/rooms/host", cookie, new URLSearchParams({ name: "Test Visitor" }));
   expect(hostRes.status, "expected hosting a room to succeed").toBe(303);
-  const res = await fetch(new URL("/", baseUrl), { headers: { cookie } });
+  // "?enter=1": the entry page is the default for a bare GET / even for a
+  // session that already has a room — see src/pages/index.astro's
+  // showEntry comment. This helper needs the room view itself (the
+  // ".action-form" elements this file's tests inspect), so it asks for it
+  // explicitly, the same way every real "go to my room" link in the app
+  // now does.
+  const res = await fetch(new URL("/?enter=1", baseUrl), { headers: { cookie } });
   return new JSDOM(await res.text()).window.document;
 }
 

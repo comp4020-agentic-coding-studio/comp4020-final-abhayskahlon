@@ -88,8 +88,19 @@ async function freshSession(): Promise<string> {
   return extractSessionCookie(res);
 }
 
+// "?enter=1": the entry page is the default for a bare GET / even once a
+// session has a room — see src/pages/index.astro's showEntry comment.
+// Every call site in this file already expects the room view itself (it's
+// what "loadHome" has always meant here); a bare, parameter-less "/" is
+// tested separately below, in its own describe block, specifically because
+// its behaviour is now different from what this helper returns.
 async function loadHome(cookie: string): Promise<Document> {
-  const res = await fetch(new URL("/", baseUrl), { headers: { cookie } });
+  const res = await fetch(new URL("/?enter=1", baseUrl), { headers: { cookie } });
+  return new JSDOM(await res.text()).window.document;
+}
+
+async function loadBareHome(cookie?: string): Promise<Document> {
+  const res = await fetch(new URL("/", baseUrl), cookie ? { headers: { cookie } } : undefined);
   return new JSDOM(await res.text()).window.document;
 }
 
@@ -263,14 +274,33 @@ describe("cross-room isolation", () => {
 });
 
 describe("room membership persistence and switching", () => {
-  it("keeps a returning session in its room across a reload, with no new session cookie", async () => {
+  // Since the entry-page-by-default change: a bare, parameter-less reload
+  // no longer renders the room directly (that's the whole point of the
+  // change — see src/pages/index.astro's showEntry comment), but the
+  // session's room MEMBERSHIP itself is completely untouched by that UI
+  // default. This proves both halves: the bare reload shows the entry
+  // page (with an explicit "Continue to your room" link naming the real
+  // room), and the SAME session, with NO new cookie, still resumes that
+  // exact room the moment it explicitly asks via "?enter=1" — nothing
+  // about the underlying session or room state changed, only which page a
+  // context-free visit defaults to.
+  it("shows the entry page (not the room) on a bare reload, but keeps the session's room membership intact", async () => {
     const { cookie, roomId } = await hostRoom("Alice");
 
-    const again = await fetch(new URL("/", baseUrl), { headers: { cookie } });
-    expect(again.headers.get("set-cookie")).toBeNull();
+    const bare = await fetch(new URL("/", baseUrl), { headers: { cookie } });
+    expect(bare.headers.get("set-cookie")).toBeNull(); // same session recognised, not replaced
 
-    const doc = new JSDOM(await again.text()).window.document;
-    expect(extractRoomId(doc)).toBe(roomId);
+    const bareDoc = new JSDOM(await bare.text()).window.document;
+    expect(isEntryPage(bareDoc)).toBe(true);
+    // The explicit re-entry affordance names the real room, proving
+    // membership survived even though this page isn't showing it directly.
+    expect(bareDoc.querySelector(".entry-returning")?.textContent ?? "").toContain(roomId);
+
+    const explicit = await fetch(new URL("/?enter=1", baseUrl), { headers: { cookie } });
+    expect(explicit.headers.get("set-cookie")).toBeNull();
+    const explicitDoc = new JSDOM(await explicit.text()).window.document;
+    expect(isEntryPage(explicitDoc)).toBe(false);
+    expect(extractRoomId(explicitDoc)).toBe(roomId);
   });
 
   it("joining or hosting a new room overwrites the session's previous room membership", async () => {
@@ -291,5 +321,77 @@ describe("room membership persistence and switching", () => {
     const res = await fetch(new URL("/?switch=1", baseUrl), { headers: { cookie } });
     const doc = new JSDOM(await res.text()).window.document;
     expect(isEntryPage(doc)).toBe(true);
+  });
+});
+
+// The entry page is the default for a bare GET /, for every kind of
+// visitor — not just the first-time one it was always correct for. This is
+// a deliberate navigation change, not a security one: every mutating route
+// still derives its room exclusively from the trusted session cookie,
+// completely unaffected by which page a plain GET / happens to render (see
+// docs/adr/0002, unchanged by this). What changes is purely which page
+// greets a context-free visit to the bare URL.
+describe("entry page is the default for a bare GET /, for every visitor", () => {
+  it("a fresh, cookie-less visitor sees the entry page", async () => {
+    const doc = await loadBareHome();
+    expect(isEntryPage(doc)).toBe(true);
+  });
+
+  it("a returning visitor with an existing room also sees the entry page on a bare GET /, not their room directly", async () => {
+    const { cookie } = await hostRoom("Returning Visitor");
+    const doc = await loadBareHome(cookie);
+    expect(isEntryPage(doc)).toBe(true);
+  });
+
+  it("the returning visitor's session and room membership remain valid — they can still explicitly re-enter with no new cookie and no re-hosting or re-joining", async () => {
+    const { cookie, roomId } = await hostRoom("Returning Visitor");
+
+    // The bare visit above already proved this shows the entry page; this
+    // proves the session underneath is still exactly the one that hosted
+    // the room (not silently replaced or invalidated) and can resume it.
+    const bare = await fetch(new URL("/", baseUrl), { headers: { cookie } });
+    expect(bare.headers.get("set-cookie")).toBeNull();
+
+    const reentered = await fetch(new URL("/?enter=1", baseUrl), { headers: { cookie } });
+    expect(reentered.headers.get("set-cookie")).toBeNull(); // same session, not a new one
+    const doc = new JSDOM(await reentered.text()).window.document;
+    expect(isEntryPage(doc)).toBe(false);
+    expect(extractRoomId(doc)).toBe(roomId);
+  });
+
+  it("a mutating action still round-trips correctly: it redirects straight back to the room, not to the entry page", async () => {
+    const { cookie } = await hostRoom("Actor");
+    const res = await post("/api/actions", cookie, new URLSearchParams({ action: "feed" }));
+    expect(res.status).toBe(303);
+    // The server's own Location header is the actual contract every real
+    // browser follows — this is what proves the redirect target itself
+    // carries "?enter=1", not just that *a* subsequent fetch happens to
+    // find the room.
+    expect(res.headers.get("location")).toBe("/?enter=1");
+
+    const after = await fetch(new URL(res.headers.get("location") ?? "/", baseUrl), { headers: { cookie } });
+    const doc = new JSDOM(await after.text()).window.document;
+    expect(isEntryPage(doc)).toBe(false);
+    expect(doc.querySelector(".last-action")?.textContent).toContain("Feed");
+  });
+
+  it("hosting and joining still redirect straight into the room, never back to the entry page", async () => {
+    const hostCookie = await freshSession();
+    const hostRes = await post("/api/rooms/host", hostCookie, new URLSearchParams({ name: "Host" }));
+    expect(hostRes.status).toBe(303);
+    expect(hostRes.headers.get("location")).toBe("/?enter=1");
+    const hostDoc = new JSDOM(await (await fetch(new URL("/?enter=1", baseUrl), { headers: { cookie: hostCookie } })).text())
+      .window.document;
+    expect(isEntryPage(hostDoc)).toBe(false);
+    const roomId = extractRoomId(hostDoc);
+
+    const joinCookie = await freshSession();
+    const joinRes = await post("/api/rooms/join", joinCookie, new URLSearchParams({ name: "Joiner", roomCode: roomId }));
+    expect(joinRes.status).toBe(303);
+    expect(joinRes.headers.get("location")).toBe("/?enter=1");
+    const joinDoc = new JSDOM(await (await fetch(new URL("/?enter=1", baseUrl), { headers: { cookie: joinCookie } })).text())
+      .window.document;
+    expect(isEntryPage(joinDoc)).toBe(false);
+    expect(extractRoomId(joinDoc)).toBe(roomId);
   });
 });

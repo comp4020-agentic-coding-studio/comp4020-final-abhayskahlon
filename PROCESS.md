@@ -529,6 +529,67 @@ mobile layouts, the room-join rejection's error state, and keyboard focus
 all checked directly, and the in-room view (Milo, stats, actions) confirmed
 pixel-identical before and after, since none of its selectors were touched.
 
+**Second follow-up: the sticky-room default above was then deliberately
+reversed, on explicit instruction, after the person using this app
+confirmed they wanted the entry page every time — not just for a genuinely
+fresh visitor.** The investigation above stands as written: sticky-room-by-
+default was a real, working, deliberate design, not a bug. What changed is
+the design itself, by a conscious choice to trade a small amount of
+returning-visitor convenience for always making the room choice explicit.
+
+**The mechanism.** `src/pages/index.astro`'s `showEntry` now reads:
+`!room || !Astro.url.searchParams.has("enter") || Astro.url.searchParams.has("switch")`
+— a bare `GET /` shows the entry page unconditionally, even for a session
+whose cookie already names a room. `?enter=1` is the one way to reach the
+room view directly, and every internal link that means "go to my room" was
+updated to use it explicitly: the five mutating routes' redirects
+(`actions.ts`, `wardrobe.ts`, `adventure.ts`, `rooms/host.ts`,
+`rooms/join.ts`, all `redirect("/?enter=1", 303)` instead of `redirect("/",
+303)`), the client script's own post-host/join `location.href`, and
+`refreshLiveState()`'s re-fetch (which only ever runs from a page that
+already rendered `#live-state`, so it always needs the room view, never the
+entry page). `?switch=1` still exists, doing exactly what `enter`'s absence
+already does, kept only so the existing "Switch room" link and any
+bookmarks of it keep working.
+
+A new affordance, `.entry-returning` (shown only when `room !== null`),
+replaces the silent behaviour the old default provided: "You're still in
+room X — continue to your room," linking to `/?enter=1`. This is what makes
+"explicitly choose to re-enter" an actual, discoverable UI action rather
+than a URL parameter nobody would know to type.
+
+**What this does and doesn't change.** Nothing about session identity, room
+membership, room isolation, or the durable logs — `session.roomId` is never
+read, written, or cleared anywhere in this change; a session that already
+belongs to a room still belongs to it, and `?enter=1` proves that by
+resuming it with no new cookie and no re-hosting or re-joining required.
+Every mutating route still derives its room exclusively from the trusted
+session cookie (docs/adr/0002, completely untouched) — this is a navigation
+default, not an access-control change, and the set of things a visitor can
+do was never gated by which page greeted a bare `GET /` in the first place.
+The cost is purely usability: a returning visitor now sees one extra screen
+before reaching Milo on every fresh page load, by design.
+
+**Tests.** `spec/rooms.test.ts` gained a dedicated describe block ("entry
+page is the default for a bare GET /, for every visitor") proving: a fresh,
+cookie-less visitor sees the entry page; a returning visitor with an
+existing room ALSO sees the entry page on a bare `GET /` (not their room
+directly); that same session's cookie is never replaced and can still
+explicitly resume its room via `?enter=1` with no re-hosting or re-joining;
+a mutating action's own server redirect (`Location` header, not just a
+subsequent fetch) targets `/?enter=1` and lands back in the room, not the
+entry page; and hosting/joining both still redirect straight into the room.
+The existing "keeps a returning session in its room across a reload" test
+was rewritten to prove the same underlying fact (no new cookie, membership
+intact) against the new behaviour, rather than deleted. Every other spec
+file's `loadHome()`-shaped helper (`adventure`, `concurrency`, `sessions`,
+`realtime`, `wardrobe`, `action-form-url`, `room-migration-backfill`,
+`persistence`) was updated to request `?enter=1` explicitly, since each of
+them inspects the room view as its own setup step, not the question this
+change is actually about — the same mechanical, non-behavioural update
+Decision 13 itself already required of these same files when rooms were
+first introduced.
+
 ## Out of scope for this deliverable (unchanged from the course's own list)
 
 No accounts/profiles, chat, voting/likes, maps, push/SMS/email

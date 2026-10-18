@@ -20,5 +20,10 @@ export const POST: APIRoute = async ({ request, redirect, cookies }) => {
   const session = getOrCreateSession(cookies);
   hostRoom(session, normalizeDisplayName(name));
 
-  return redirect("/", 303);
+  // "/?enter=1": hosting is itself an explicit, deliberate choice to enter
+  // a room (the whole point of the form just submitted) — landing straight
+  // on it, not back on the entry page, is the correct result. See
+  // src/pages/index.astro's comment on showEntry for why a bare "/" alone
+  // would no longer be enough to reach the room view.
+  return redirect("/?enter=1", 303);
 };

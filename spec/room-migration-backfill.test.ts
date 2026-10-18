@@ -163,7 +163,11 @@ describe("room migration backfill (legacy single-creature data)", () => {
     });
     expect(joinRes.status, "expected the backfilled COMMONS room to exist and be joinable").toBe(303);
 
-    const home = await fetch(new URL("/", baseUrl), { headers: { cookie } });
+    // "?enter=1": the entry page is the default for a bare GET / even for a
+    // session that already has a room — see src/pages/index.astro's
+    // showEntry comment. This test needs the actual room view (the
+    // backfilled stats/history/age it asserts on below).
+    const home = await fetch(new URL("/?enter=1", baseUrl), { headers: { cookie } });
     const doc = new JSDOM(await home.text()).window.document;
 
     // Bug (a): no false host attribution. The recent actor must NOT be

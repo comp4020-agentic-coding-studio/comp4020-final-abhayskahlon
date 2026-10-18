@@ -310,29 +310,53 @@ main :where(pre code) {
   text-align: left;
 }
 
-/* ---------- room entry: join or host ---------- */
+/* ---------- room entry: join or host ----------
+   Two sibling cards (.entry-card), not one continuous form with a divider
+   rule: the brief asks the two choices to read as genuinely distinct
+   options rather than sections of one long form. Each card reuses the
+   same surface/border/radius tokens every other panel on this page already
+   uses (--color-surface-alt, --color-border, --radius-lg) rather than
+   introducing a second visual language. */
+
+.entry-choices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.entry-card {
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+}
 
 .entry-panel h2 {
   font-family: var(--font-display);
   font-size: 1.1rem;
-  margin: var(--space-5) 0 var(--space-2);
+  margin: 0 0 var(--space-1);
 }
 
-.entry-panel h2:first-of-type {
-  margin-top: var(--space-2);
+.entry-card-hint {
+  margin: 0 0 var(--space-3);
+  color: var(--color-muted);
+  font-size: 0.85rem;
+}
+
+.entry-or {
+  align-self: center;
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .entry-form {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding-bottom: var(--space-4);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.entry-form:last-of-type {
-  border-bottom: none;
-  padding-bottom: 0;
 }
 
 .entry-form label {
@@ -346,7 +370,11 @@ main :where(pre code) {
   padding: 0.6rem 0.8rem;
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border);
-  background: var(--color-surface-alt);
+  /* the surrounding .entry-card already uses --color-surface-alt, so the
+     input itself goes white (--color-surface) to stay visually distinct
+     from its card, the same contrast relationship panels/inputs have
+     everywhere else on this page */
+  background: var(--color-surface);
   color: var(--color-text);
 }
 

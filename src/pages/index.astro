@@ -104,60 +104,66 @@ const activityPhrase =
       {
         showEntry || !room || !state || !dialogue ? (
           <section class="panel entry-panel" aria-labelledby="entry-heading">
-            <h1 id="entry-heading">COMMONS</h1>
+            <h1 id="entry-heading">Welcome to COMMONS</h1>
             <p class="intro">
-              {CREATURE_NAME} is cared for by whoever's in the same room — enter your name, then either join a room
-              with its code or host a brand-new one.
+              One shared {CREATURE_NAME}, looked after by everyone in the same room — not a separate pet for each of
+              you. Enter your name, then join a room with its code or start a brand-new one.
             </p>
 
-            {/* Validated server-side by src/pages/api/rooms/join.ts — this
-                form never resolves a room itself, it only ever submits what
-                a visitor typed. A room's existence is checked against the
-                database on every attempt, never assumed from this page. */}
-            <form method="post" action="/api/rooms/join" class="entry-form">
-              <h2>Join a room</h2>
-              <label for="join-name">Your name</label>
-              <input
-                id="join-name"
-                name="name"
-                type="text"
-                maxlength={DISPLAY_NAME_MAX_LENGTH}
-                value={session.label}
-                required
-                autocomplete="off"
-              />
-              <label for="join-code">Room code</label>
-              <input
-                id="join-code"
-                name="roomCode"
-                type="text"
-                maxlength={ROOM_CODE_LENGTH}
-                placeholder="e.g. 4Q7K2P"
-                autocapitalize="characters"
-                autocomplete="off"
-                required
-              />
-              <button type="submit">Join room</button>
-            </form>
+            <div class="entry-choices">
+              {/* Validated server-side by src/pages/api/rooms/join.ts — this
+                  form never resolves a room itself, it only ever submits what
+                  a visitor typed. A room's existence is checked against the
+                  database on every attempt, never assumed from this page. */}
+              <form method="post" action="/api/rooms/join" class="entry-form entry-card">
+                <h2>Join a room</h2>
+                <p class="entry-card-hint">Already have a code from someone else in the room?</p>
+                <label for="join-name">Your name</label>
+                <input
+                  id="join-name"
+                  name="name"
+                  type="text"
+                  maxlength={DISPLAY_NAME_MAX_LENGTH}
+                  value={session.label}
+                  required
+                  autocomplete="off"
+                />
+                <label for="join-code">Room code</label>
+                <input
+                  id="join-code"
+                  name="roomCode"
+                  type="text"
+                  maxlength={ROOM_CODE_LENGTH}
+                  placeholder="e.g. 4Q7K2P"
+                  autocapitalize="characters"
+                  autocomplete="off"
+                  required
+                />
+                <button type="submit">Join room</button>
+              </form>
 
-            {/* A separate form, not a second button on the one above: hosting
-                takes only a name (the code is always server-generated —
-                src/lib/room.ts), so sharing a submit with "join" would mean
-                either form silently ignoring a field the other doesn't use. */}
-            <form method="post" action="/api/rooms/host" class="entry-form">
-              <h2>Host a new room</h2>
-              <label for="host-name">Your name</label>
-              <input
-                id="host-name"
-                name="name"
-                type="text"
-                maxlength={DISPLAY_NAME_MAX_LENGTH}
-                value={session.label}
-                required
-                autocomplete="off"
-              />
-              <button type="submit">Host a room</button>
-            </form>
+              <p class="entry-or" role="separator" aria-label="or">or</p>
+
+              {/* A separate form, not a second button on the one above: hosting
+                  takes only a name (the code is always server-generated —
+                  src/lib/room.ts), so sharing a submit with "join" would mean
+                  either form silently ignoring a field the other doesn't use. */}
+              <form method="post" action="/api/rooms/host" class="entry-form entry-card">
+                <h2>Host a new room</h2>
+                <p class="entry-card-hint">Starting fresh? You'll get a short code to share with whoever joins you.</p>
+                <label for="host-name">Your name</label>
+                <input
+                  id="host-name"
+                  name="name"
+                  type="text"
+                  maxlength={DISPLAY_NAME_MAX_LENGTH}
+                  value={session.label}
+                  required
+                  autocomplete="off"
+                />
+                <button type="submit">Host a room</button>
+              </form>
+            </div>
 
             <p class="entry-error" id="entry-error" role="alert" aria-live="polite" hidden />
           </section>

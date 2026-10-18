@@ -495,6 +495,40 @@ room's state fighting over the same cells, defeating isolation entirely.
 One `creature` row per room, with a unique `roomId`, is the only shape that
 actually isolates anything.
 
+**Follow-up (post-ship): "COMMONS loads directly, no entry page" was
+investigated and found to be sticky-room behaviour working as designed, not
+a routing defect.** A report that the production URL opened straight into
+the legacy `COMMONS` room, skipping the entry screen, was checked directly
+against the live deployment rather than assumed: a genuinely fresh session
+(no prior `commons_session` cookie — confirmed with a brand-new cookie jar
+and separately in production) correctly rendered the entry page every time.
+What actually happened was a browser that had already joined or hosted a
+room earlier returning to that room on reload — exactly `getSessionRoom()`
+reading `session.roomId` off the trusted cookie, and exactly what
+`spec/rooms.test.ts` ("keeps a returning session in its room across a
+reload, with no new session cookie") and this decision's point 5 (joining
+or hosting always overwrites, sticky until `/?switch=1`) already describe
+as deliberate. No change was made to routing, session handling, room
+isolation, or the sticky-room behaviour itself — confirming this cost one
+false-alarm investigation, not a code change, so it's recorded here rather
+than as a new decision.
+
+What *did* change: a visual-only pass on the entry page itself, since on
+inspection its copy and layout read more like a generic form than the rest
+of this app's deliberately warm, playful visual language (Decision 6's
+"shared custody must be visible" styling). The heading now reads "Welcome
+to COMMONS" and the intro names the shared-care concept directly (one Milo,
+not a separate pet each); "Join a room" and "Host a new room" are now two
+visually distinct cards (`.entry-card`, sharing `--color-surface-alt`/
+`--color-border`/`--radius-lg` with every other panel on this page) with an
+"or" divider between them, instead of one form with a thin rule. No new
+colours, fonts, or component system — every token reused is one already
+defined in `src/styles.css` for the in-room view. Verified by rendering the
+actual page with a headless browser (not just reading the CSS): desktop and
+mobile layouts, the room-join rejection's error state, and keyboard focus
+all checked directly, and the in-room view (Milo, stats, actions) confirmed
+pixel-identical before and after, since none of its selectors were touched.
+
 ## Out of scope for this deliverable (unchanged from the course's own list)
 
 No accounts/profiles, chat, voting/likes, maps, push/SMS/email

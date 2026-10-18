@@ -4,6 +4,7 @@ import { formatMiloAge } from "../components/age";
 import { pickDialogue } from "../components/dialogue";
 import Milo from "../components/Milo.astro";
 import StatIcon from "../components/StatIcon.astro";
+import { getLatestPatch } from "../lib/changelog";
 import { ACTIONS, type ActionName, WARDROBE_HATS, WARDROBE_LABELS, WARDROBE_NECKWEAR } from "../lib/creature";
 import { getCreatureState, getSessionRoom } from "../lib/db";
 import { DISPLAY_NAME_MAX_LENGTH, ROOM_CODE_LENGTH } from "../lib/room";
@@ -17,6 +18,10 @@ import "../styles.css";
 // the entry experience below renders.
 const session = getOrCreateSession(Astro.cookies);
 const room = getSessionRoom(session);
+
+// Only ever read on the entry branch (below) — a one-line pointer to the
+// newest CHANGELOG.md entry, never shown on the room view.
+const latestPatch = getLatestPatch();
 
 // The entry page is the default for a bare GET / even when the session
 // already belongs to a room — a deliberate choice, made so a returning
@@ -107,6 +112,7 @@ const activityPhrase =
         <a href="/">COMMONS</a>
         <nav aria-label="site">
           <a href="/readme/">About</a>
+          <a href="/patch-notes/">Patch notes</a>
         </nav>
       </div>
     </header>
@@ -200,6 +206,19 @@ const activityPhrase =
                   <button type="submit">Host a room</button>
                 </form>
               </div>
+
+              {/* A footnote, not a feature: deliberately placed after the
+                  two real choices above, never between them, and styled to
+                  be visually quieter than everything else on this card (see
+                  .entry-patch-note in styles.css). Links straight to the
+                  newest entry's own anchor on the full patch-notes page, so
+                  "click it to know more" lands exactly on the relevant
+                  section, not just the top of a long page. */}
+              {latestPatch && (
+                <p class="entry-patch-note">
+                  <a href={`/patch-notes/#${latestPatch.slug}`}>{latestPatch.text}</a> — what's new
+                </p>
+              )}
 
               <p class="entry-error" id="entry-error" role="alert" aria-live="polite" hidden />
             </section>

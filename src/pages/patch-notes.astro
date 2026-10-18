@@ -1,0 +1,36 @@
+---
+// CHANGELOG.md, rendered — the full patch history, linked from the entry
+// page's one-line "what's new" note (src/lib/changelog.ts). Modelled
+// line-for-line on readme.astro: a committed Markdown file is the right
+// home for this (static, developer-authored copy, not application state —
+// CLAUDE.md's "the database is the only source of truth" is about this
+// app's STATE, not its static copy, the same reasoning README.md already
+// rests on), imported the same way, rendered the same way, with the same
+// shared header markup.
+import * as changelog from "../../CHANGELOG.md";
+import "../styles.css";
+
+const title = changelog.getHeadings().find((h) => h.depth === 1)?.text ?? "Patch notes";
+const html = await changelog.compiledContent();
+---
+
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <header class="site-header">
+      <div>
+        <a href="/">COMMONS</a>
+        <nav aria-label="site">
+          <a href="/readme/">About</a>
+          <a href="/patch-notes/">Patch notes</a>
+        </nav>
+      </div>
+    </header>
+    <main set:html={html} />
+  </body>
+</html>

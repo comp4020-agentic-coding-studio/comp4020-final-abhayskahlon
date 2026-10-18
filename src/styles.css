@@ -394,8 +394,10 @@ main :where(pre code) {
    than .intro, no card/border/background of its own, so it never competes
    with the two actual room-choice cards below it for attention. */
 .entry-patch-note {
-  margin: 0 0 var(--space-4);
-  font-size: 0.85rem;
+  margin: var(--space-4) 0 0;
+  font-size: 0.8rem;
+  color: var(--color-muted);
+  text-align: center;
 }
 
 .entry-patch-note a {

@@ -3,6 +3,16 @@
 What's changed, in plain terms, newest first — read live via `/patch-notes/`
 and summarised on the entry page's own "what's new in COMMONS" section.
 
+## Patch 1.4 — Simbaa actually looks like a lamb now
+
+Simbaa's fleece used to be a smooth, rounded body with small circles dotted
+around the outline — reading as decorations, not wool. The silhouette is
+redrawn as genuine scalloped fleece (fluffy, rounded tufts, not spots),
+with floppy ears and warm pink inner ears, a distinct face so the
+expression doesn't get lost in the wool, a soft rounded nose, and visible
+hooves. Purely a look — nothing about stats, levels, accessories, or care
+history changed.
+
 ## Patch 1.3 — Five looks for Milo, and a shared level to work toward
 
 The shared creature can now look like one of five appearances — Milo, Plip

@@ -825,6 +825,61 @@ later switch. `spec/realtime.test.ts` gained one test confirming a switch
 broadcasts the same `event: update` signal any other mutation does.
 `spec/wardrobe.test.ts` gained the glasses-rendering regression above.
 
+**Follow-up: Simbaa's silhouette didn't actually read as a lamb, and was
+redesigned.** Reported directly, with a reference image of the intended
+look: the original fleece shape (a plain oval body — the same base path
+`Milo.astro` uses for its body — with ten small circles placed around its
+outline) read as "a round character with circular decorations," not
+fleece, exactly because that's what it structurally was: decorations on a
+smooth shape, not a textured shape in its own right. No amount of adding
+more circles to that same oval would have fixed the underlying problem, so
+the fix was a real re-draw, not a parameter tweak.
+
+The new silhouette is two genuinely scalloped cloud shapes (one for the
+head, one for the body) — each built by placing points evenly around an
+ellipse and connecting every consecutive pair with an **outward-bulging
+circular arc**, the standard cloud/fleece-outline construction, rather
+than a smooth curve with separate decorations layered on top. This was
+verified geometrically before being written into the component at all: a
+standalone script generated several candidate shapes at different
+bump-counts and bulge amounts, each one actually rendered to an image and
+visually compared, before picking the version that reads as "fluffy
+tufts" (9–10 bumps, moderate bulge) rather than either a smooth blob (too
+few/shallow) or a spiky star (too many/sharp or the wrong curve type
+entirely — an earlier attempt using a sinusoidal radius modulation instead
+of arcs produced pointed, star-like bumps, confirmed wrong by rendering it
+before it ever reached the component).
+
+Also new, and never present in the original design at all: a distinct,
+lighter face plate sits on top of the head fleece, so the face reads as
+skin rather than being the same wool-colored surface as everything around
+it — floppy ears extending sideways (rotated ~55° from vertical, not the
+small upright drop-ears the original used, which read as generic "pet
+ears" rather than lamb ears specifically) with warm pink inner-ear detail;
+a rounded, soft-edged nose shape (replacing a plain pink ellipse); and
+visible dark-brown hooves as their own element distinct from the leg
+above them. Every mood expression, wardrobe item, and reaction mark was
+repositioned to the new face/body geometry rather than left at the old
+coordinates — re-checked by rendering every mood family and every
+compatible accessory, not assumed to still line up after the shape
+changed.
+
+**Nothing else changed.** Only `src/components/Simbaa.astro` — same Props
+shape, same `computeMood()` dispatch, same reaction-mark pattern, same
+accessory id vocabulary (`ACCESSORIES` in `src/lib/creature.ts` untouched).
+No schema change, no migration, no change to stats/xp/milestones/
+appearance-switching logic, no change to the other four creature
+components. Verified by rendering the actual running app (not just reading
+the new SVG paths): the redesigned lamb at normal size, at the small size
+the SVG renders at inline, asleep, and wearing two different full
+accessory sets (golden crown/heart glasses/knit scarf, and top hat/round
+glasses/bow tie) — confirming the face stays visible and uncovered, the
+character stays centered and proportionate in the existing creature-panel
+layout, and the other four appearances and the appearance selector itself
+are visually unaffected. Full suite re-run after the change: 113/113
+still passing, with no test needing updating (the redesign didn't change
+any class name the test suite depends on, only path/coordinate data).
+
 ## Decision 16 — shared XP, levels, and level-gated accessories
 
 **Decision.** The room's one shared creature now has a second, independent

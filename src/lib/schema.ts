@@ -83,6 +83,21 @@ export const creature = sqliteTable("creature", {
   // authored vocabulary each one is validated against.
   hat: text(),
   neckwear: text(),
+  // A lifetime, never-pruned counter — the one deliberate exception to
+  // Decision 8's "bounded, not unbounded" pattern for this room's history.
+  // `care_events`/`log_events` are both capped and pruned on insert, so
+  // neither can ever answer "how many successful care actions has this
+  // room performed, total" once that count passes their cap — a single
+  // integer has none of a row-per-event table's unbounded-growth risk, so
+  // it's the only correct mechanism for a true lifetime total. Incremented
+  // by exactly 1 inside the same transaction every successful feed/play/
+  // walk/clean/sleep and adventure already writes (src/lib/db.ts), never
+  // for a rejected action and never for a wardrobe change (cosmetic, free,
+  // and never gated by any rule — counting it would make this trivially
+  // farmable). See PROCESS.md, Decision 14, for why this doesn't reopen
+  // Decision 6's "never a leaderboard" rule: this is a per-ROOM total,
+  // never joined against `sessions` or shown per-visitor anywhere.
+  totalCareActions: int("total_care_actions").notNull().default(0),
 });
 
 // A lightweight, unauthenticated visitor identity: a random token set as an

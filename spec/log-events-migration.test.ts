@@ -54,9 +54,26 @@ describe("log_events migration", () => {
     const journal = JSON.parse(readFileSync(join(migrationsDir, "meta", "_journal.json"), "utf8")) as {
       version: string;
       dialect: string;
-      entries: { idx: number; tag: string }[];
+      entries: { idx: number; tag: string; when: number }[];
     };
-    const preLogEventsEntries = journal.entries.filter((e) => !e.tag.includes(LOG_EVENTS_MIGRATION_TAG));
+    const logEventsEntry = journal.entries.find((e) => e.tag.includes(LOG_EVENTS_MIGRATION_TAG));
+    if (!logEventsEntry) {
+      throw new Error(`could not find the log_events migration (tag containing "${LOG_EVENTS_MIGRATION_TAG}") in the journal`);
+    }
+    // Strictly BEFORE this migration's own timestamp — not just "not named
+    // like it." Filtering by name alone broke the FIRST time a migration
+    // was added after this one (found when PROCESS.md, Decision 14's
+    // milestones migration landed): drizzle-kit's migrator tracks "already
+    // applied" against the single most recent migration's `when`
+    // timestamp, not which specific files ran, so leaving a
+    // later-timestamped migration in the "pre" set pushes that watermark
+    // past this migration's own timestamp and makes the real migrator skip
+    // THIS migration entirely on the subsequent full pass — exactly the
+    // same bug class spec/room-migration-backfill.test.ts's own comment
+    // already documents for the rooms migration, now recurring here for
+    // the same reason. Fixed the same way: filter by journal timestamp
+    // position, never by migration name.
+    const preLogEventsEntries = journal.entries.filter((e) => e.when < logEventsEntry.when);
     expect(preLogEventsEntries.length, "expected at least one pre-log_events migration to replay").toBeGreaterThan(0);
 
     const preDir = join(workDir, "drizzle-pre-log-events");

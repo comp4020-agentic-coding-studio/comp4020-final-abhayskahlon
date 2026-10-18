@@ -1,0 +1,1 @@
+ALTER TABLE `creature` ADD `total_care_actions` integer DEFAULT 0 NOT NULL;

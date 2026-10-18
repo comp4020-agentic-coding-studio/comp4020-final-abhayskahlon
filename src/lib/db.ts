@@ -8,12 +8,14 @@ import {
   type ActionName,
   type Activity,
   type HatOption,
+  type MilestoneInfo,
   type NeckwearOption,
   type Stats,
   applyAction,
   applyAdventure,
   describeWardrobe,
   deriveHealth,
+  getMilestone,
   resolveActivity,
 } from "./creature";
 import { actorTag, logCareEvent, logRoomEvent } from "./log";
@@ -346,6 +348,16 @@ export interface CreatureState {
   history: CareHistoryEntry[];
   hat: HatOption | null;
   neckwear: NeckwearOption | null;
+  // PROCESS.md, Decision 14 — the room's own lifetime total and its derived
+  // milestone progress, never a per-visitor figure. Computed fresh from
+  // `creature.totalCareActions` on every read (toState, below), the same
+  // "recompute every time, no cached/one-shot event" pattern deriveHealth
+  // and resolveAndSync already follow — a newly-reached milestone becomes
+  // visible the next time anyone's tab re-fetches, via the same
+  // SSE-signals-then-refetch mechanism every other change already uses
+  // (Decision 5), with no new real-time payload.
+  totalCareActions: number;
+  milestone: MilestoneInfo;
 }
 
 function listRecentCareHistory(handle: Handle, roomId: string, limit: number): CareHistoryEntry[] {
@@ -422,6 +434,8 @@ function toState(handle: Handle, row: Creature, roomId: string): CreatureState {
     // the column can never hold anything outside that vocabulary in practice.
     hat: resolvedRow.hat as HatOption | null,
     neckwear: resolvedRow.neckwear as NeckwearOption | null,
+    totalCareActions: resolvedRow.totalCareActions,
+    milestone: getMilestone(resolvedRow.totalCareActions),
   };
 }
 
@@ -499,6 +513,14 @@ export function performAction(action: ActionName, session: Session, roomId: stri
         lastAction: action,
         lastActorSessionId: session.id,
         updatedAt: sql`(datetime('now'))`,
+        // PROCESS.md, Decision 14: only reached once `outcome.ok` is true,
+        // same guard as every other field this .set() writes — a rejected
+        // action returns above, before this statement is ever run, so this
+        // can never increment for anything but a genuinely successful
+        // action. A plain SQL increment, not a read-then-write of a JS
+        // number, so it can never race with another concurrent transaction
+        // touching the same row (Decision 4).
+        totalCareActions: sql`${creature.totalCareActions} + 1`,
       })
       .where(eq(creature.id, row.id))
       .run();
@@ -573,6 +595,11 @@ export function performWardrobeChange(slot: WardrobeSlot, value: string | null, 
     const hat = slot === "hat" ? (value as HatOption | null) : ((row.hat as HatOption | null) ?? null);
     const neckwear = slot === "neckwear" ? (value as NeckwearOption | null) : ((row.neckwear as NeckwearOption | null) ?? null);
 
+    // Deliberately no `totalCareActions` increment here (PROCESS.md,
+    // Decision 14) — unlike every other write to `creature`, a wardrobe
+    // change is cosmetic, free, and never gated by any rule, so counting
+    // it toward the room's milestone total would make that total trivially
+    // farmable by flipping a hat on and off with no real cost or effort.
     tx.update(creature)
       .set({
         hat,
@@ -624,6 +651,9 @@ export function performAdventure(session: Session, roomId: string): CreatureStat
         lastAction: "adventure",
         lastActorSessionId: session.id,
         updatedAt: sql`(datetime('now'))`,
+        // PROCESS.md, Decision 14 — same guard and reasoning as
+        // performAction's identical line above: only reached on success.
+        totalCareActions: sql`${creature.totalCareActions} + 1`,
       })
       .where(eq(creature.id, row.id))
       .run();

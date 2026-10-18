@@ -256,6 +256,26 @@ const activityPhrase =
                   its own mechanic.
                 </p>
 
+                {/* The room's own shared, unranked lifetime total — never
+                    broken down by visitor, never compared against another
+                    room (PROCESS.md, Decision 14; Decision 6's "never a
+                    leaderboard" rule). "Room care so far," never "You've" —
+                    the same scope every other field on this panel already
+                    has (hunger, hat, condition), just accumulated over
+                    time instead of read at this instant. */}
+                <p class="milestone-progress">
+                  {state.milestone.label && <span class="milestone-badge">{state.milestone.label}</span>}
+                  Room care so far: <strong>{state.totalCareActions}</strong>
+                  {state.milestone.next !== null ? (
+                    <> / {state.milestone.next} toward the next milestone.</>
+                  ) : (
+                    <> — every milestone reached!</>
+                  )}
+                </p>
+                <span class="stat-bar milestone-bar">
+                  <span class="stat-bar-fill" style={`width: ${state.milestone.progress}%`} />
+                </span>
+
                 {
                   state.lastAction && (
                     <p class="last-action">

@@ -219,3 +219,48 @@ export function applyAdventure(snapshot: CreatureSnapshot): ActionOutcome {
     "happiness +15, energy −10, cleanliness −30 — came back muddy",
   );
 }
+
+// ---- milestones: a shared, room-level progress track ----------------------
+// PROCESS.md, Decision 14. Pure flavor text derived from
+// `creature.totalCareActions` (schema.ts) — never a new mechanic, never a
+// stat boost, never anything that changes what an action does. The room's
+// own lifetime total, nothing else: this never takes a session id, a
+// per-visitor count, or anything that could be used to compare one
+// visitor's contribution against another's (PROCESS.md, Decision 6).
+//
+// Five fixed, ascending thresholds — modest and deliberately short, the
+// same "a small persistent thing, not a sprawling content system" scope
+// every other feature in this app keeps to (Decision 8's "capped, not
+// unbounded" framing, applied here to the *number of milestones* rather
+// than a row count).
+export const CARE_MILESTONES = [10, 50, 100, 250, 500] as const;
+
+export const MILESTONE_LABELS: Record<(typeof CARE_MILESTONES)[number], string> = {
+  10: "Settling in",
+  50: "Well cared for",
+  100: "A real routine",
+  250: "Old hands at this",
+  500: "Inseparable",
+};
+
+export interface MilestoneInfo {
+  // The highest threshold reached so far, or null if none yet.
+  reached: (typeof CARE_MILESTONES)[number] | null;
+  label: string | null; // MILESTONE_LABELS[reached], or null to match
+  // The next threshold to work toward, or null once every milestone here
+  // has been reached — "maxed out," not an error state.
+  next: (typeof CARE_MILESTONES)[number] | null;
+  // 0–100, how far toward `next` the room's total currently is. 100 when
+  // `next` is null (every milestone already reached).
+  progress: number;
+}
+
+export function getMilestone(totalCareActions: number): MilestoneInfo {
+  let reached: (typeof CARE_MILESTONES)[number] | null = null;
+  for (const threshold of CARE_MILESTONES) {
+    if (totalCareActions >= threshold) reached = threshold;
+  }
+  const next = CARE_MILESTONES.find((threshold) => totalCareActions < threshold) ?? null;
+  const progress = next === null ? 100 : Math.round((totalCareActions / next) * 100);
+  return { reached, label: reached === null ? null : MILESTONE_LABELS[reached], next, progress };
+}

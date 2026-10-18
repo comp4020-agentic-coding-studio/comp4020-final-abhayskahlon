@@ -678,6 +678,38 @@ main :where(pre code) {
   margin-top: var(--space-3);
 }
 
+/* PROCESS.md, Decision 14 — the room's own shared, unranked lifetime
+   progress. Same type scale/color as .condition just above it (this is
+   the same category of read-only summary, not a new visual language);
+   .milestone-bar reuses .stat-bar's exact shape rather than inventing a
+   second progress-bar style for one more thing being tracked. */
+.milestone-progress {
+  font-size: 0.9rem;
+  color: var(--color-muted);
+  margin-top: var(--space-2);
+}
+
+.milestone-badge {
+  display: inline-block;
+  margin-right: var(--space-2);
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-alt);
+  color: var(--color-accent-ink);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+/* .stat-bar is normally a <span> sized by its .stat-row grid cell
+   (grid-template-columns above) — outside that grid it has no intrinsic
+   width to give its .stat-bar-fill child a percentage of, so this needs
+   its own explicit block-level width to render as a bar at all. */
+.milestone-bar {
+  display: block;
+  width: 100%;
+  margin-top: var(--space-1);
+}
+
 .last-action {
   font-size: 0.95rem;
   margin-top: var(--space-3);

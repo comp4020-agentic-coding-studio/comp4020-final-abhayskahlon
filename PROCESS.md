@@ -590,6 +590,116 @@ change is actually about — the same mechanical, non-behavioural update
 Decision 13 itself already required of these same files when rooms were
 first introduced.
 
+## Decision 14 — Milo milestones: a shared, unranked progress track
+
+**Decision.** `creature.total_care_actions` (`src/lib/schema.ts`) is a new,
+never-pruned, per-room lifetime counter: +1 inside the same transaction as
+every successful `feed`/`play`/`walk`/`clean`/`sleep`/adventure, never for a
+rejected action, never for a wardrobe change. Five fixed, ascending
+thresholds (10/50/100/250/500 — `src/lib/creature.ts`'s `CARE_MILESTONES`)
+each unlock one short flavor-text label (`MILESTONE_LABELS`) — no stat
+boost, no new wardrobe item, no gameplay effect of any kind. The room view
+shows the current total and a progress bar toward the next threshold,
+phrased "Room care so far," never "You've" — the room's own number, the
+same scope `hunger`/`hat` already have, never joined against `sessions` or
+broken down by visitor anywhere.
+
+**Why this was raised at all.** Raised directly by the person running this
+project: with no end goal, a room's Milo can be fed/played/walked/cleaned/
+slept forever with nothing to work toward — "what's the point?" This is a
+genuine tension with this app's own founding thesis (Decision 1's "one
+persistent being, not one per user," and this file's own opening framing of
+"good" as collective responsibility made visible, not competition). Rather
+than resolve that tension unilaterally, the person was asked to choose
+explicitly between three concrete directions: (a) milestones for Milo, a
+room-level shared goal with no per-visitor ranking; (b) a competitive,
+per-visitor scoring/achievement system; or (c) something else entirely. They
+chose (a) — explicitly, after the tension was named — and this decision
+implements exactly that choice, not a unilateral reinterpretation of the
+brief.
+
+**Why this does not reopen Decision 6 ("shared custody must be visible,
+never a leaderboard").** Decision 6 rules out per-user scores, rankings, or
+anything that invites comparing visitors against each other — its stated
+purpose is defending against this concept reading as "a Tamagotchi clone
+with a chat log bolted on." `total_care_actions` is scoped to the room's one
+shared creature, never to a session: it is never read alongside
+`lastActorSessionId`, never joined against `sessions`, and the UI phrasing
+(`spec/milestones.test.ts`'s "never attributed to a visitor" tests assert
+this directly — the rendered milestone text is checked to never contain a
+session's display label, even in the same request where other fields on the
+same page legitimately do) makes this the cumulative-count analogue of the
+already-approved, unranked "Recent care" history (Decision 6 itself), not a
+new kind of comparison. CLAUDE.md's out-of-scope "no leaderboards,
+achievements... or AI" line is read the same way it already had to be read
+for Decision 13's room pivot: written when every such feature would
+necessarily have meant ranking one visitor against another, because there
+was no other scope for "achievement" to mean. A room-level, unranked total
+was not something that line was ever written to rule out, the same way
+"multiple creatures" being out of scope never meant "multiple rooms" once
+rooms became the explicit unit of sharing (Decision 13).
+
+**Why a new counter, not something derived.** `care_events` (Decision 8) and
+`log_events` (Decision 13's follow-up) are both deliberately bounded and
+pruned on insert — neither can ever answer "how many successful actions has
+this room performed, total," once that total passes either cap. Reusing
+`age.ts`'s existing time-since-first-visit milestones was considered and
+rejected: age and care are different axes, and conflating them would let a
+room "age up" after a month of total neglect — the opposite of what a care
+milestone should reward. A single integer, incremented in place, has none
+of a row-per-event table's unbounded-growth risk, so it's the only correct
+mechanism for a true lifetime total.
+
+**Why wardrobe changes don't count, but adventures do.** A wardrobe change
+is cosmetic, free, and never gated by any rule (Decision 11) — counting it
+toward the total would make the milestone trivially farmable by flipping a
+hat on and off with no real cost or effort, undermining "something the room
+worked toward" entirely. An adventure (Decision 12) is a genuine shared
+activity with a real, felt stat cost (its cleanliness hit is the single
+largest in the app), the same category of real action as the five care
+actions — excluding it would arbitrarily shrink the "together" this feature
+is meant to measure.
+
+**Migration.** `drizzle/0005_peaceful_black_cat.sql` — a single additive
+`ALTER TABLE creature ADD total_care_actions integer DEFAULT 0 NOT NULL`,
+no table rebuild, no hand-written backfill script: SQLite's own
+`DEFAULT 0 NOT NULL` gives every pre-existing room's row 0 automatically.
+Stated plainly, not glossed over: an existing room's milestone progress
+starts at 0 from this point forward, never reconstructed from
+`care_events`/`log_events` history — both are capped, so any such
+reconstruction would under-report for a room that had ever exceeded either
+cap, making a guessed starting value actively misleading rather than merely
+incomplete.
+
+While building this, adding a migration after `drizzle/0004_*.sql`
+reproduced the exact bug class `spec/room-migration-backfill.test.ts`'s own
+comment already documents for the rooms migration:
+`spec/log-events-migration.test.ts`'s own simulation filtered "pre-log_events
+migrations" by *name* (excluding the log_events migration's tag) rather than
+by *journal timestamp position* — harmless until a later migration (this
+one) was added, at which point drizzle-kit's migrator (which tracks
+"already applied" against the single most recent migration's timestamp, not
+which specific files ran) would have silently skipped the log_events
+migration entirely on a real full pass. Caught immediately because that
+test runs the full real migration set and asserts on its actual result, the
+same standard this file's own prior incidents already hold every migration
+test to. Fixed the same way the rooms-migration test was fixed: filter by
+timestamp position relative to the migration being isolated, never by name.
+
+**Tests.** `spec/milestones.test.ts`: a fresh room starts at 0 with no
+milestone reached; a successful action increments by exactly 1; a rejected
+action changes nothing; a wardrobe change does not increment; an adventure
+does; crossing threshold 10 exactly at the 10th successful action (not the
+9th); the milestone text never contains a visitor's display label even
+while other fields on the same page legitimately do; two different sessions
+in the same room see the identical shared total; and — reusing
+`spec/concurrency.test.ts`'s genuinely-concurrent `Promise.all` standard —
+the final total under real concurrent requests equals exactly the number
+that actually succeeded, with none lost to a race. `spec/milestones-
+migration.test.ts`: the column exists with the right default on a fresh
+database, and an already-roomed database's existing creature row is
+backfilled to exactly 0 with every other column untouched.
+
 ## Out of scope for this deliverable (unchanged from the course's own list)
 
 No accounts/profiles, chat, voting/likes, maps, push/SMS/email

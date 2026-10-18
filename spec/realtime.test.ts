@@ -221,6 +221,21 @@ describe("real-time updates", () => {
     }
   });
 
+  it("a wardrobe/appearance change (never gated by a stat rule) still produces an update event, same as a care action", async () => {
+    const cookie = await newVisitor();
+    const events = connectEvents(cookie);
+    try {
+      await events.opened;
+      const res = await post("/api/appearance", cookie, new URLSearchParams({ appearance: "plip" }));
+      expect(res.status).toBe(303);
+
+      const event = await events.next(2000);
+      expect(event?.event).toBe("update");
+    } finally {
+      events.close();
+    }
+  });
+
   it("a rejected action produces no update event", async () => {
     const cookie = await newVisitor();
     // Drain energy via `play` until the server itself rejects one —

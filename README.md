@@ -2,19 +2,27 @@
 
 **Live:** https://comp4020-final-abhayskahlon.fly.dev/
 
-One creature, Milo. Not one each — one, shared by everyone currently in the
-same room. A room is an explicit, chosen scope: a visitor opens the site,
-enters a name, and either hosts a brand-new room (getting a short code back)
-or joins an existing one by typing that code. Everyone in the same room
-shares that room's own Milo — a stranger in there can feed, play with, walk,
-clean, or put Milo to sleep, and the next person in that room sees exactly
-what the one before them left behind: Milo's current needs, and a short,
+One creature. Not one each — one, shared by everyone currently in the same
+room. A room is an explicit, chosen scope: a visitor opens the site, enters
+a name, and either hosts a brand-new room (getting a short code back) or
+joins an existing one by typing that code. Everyone in the same room shares
+that room's one creature — a stranger in there can feed, play with, walk,
+clean, or put it to sleep, and the next person in that room sees exactly
+what the one before them left behind: its current needs, and a short,
 chronological record of who did what. A different room has its own
-completely separate Milo, history, and live updates — nothing one room does
-is visible to another. There's no login — a lightweight, anonymous cookie is
-enough to tell visitors in the same room apart — and most actions both help
-Milo and cost something (cleaning is the one free action), so one person's
-choice changes what the next person in that room should reasonably do next.
+completely separate creature, history, and live updates — nothing one room
+does is visible to another. There's no login — a lightweight, anonymous
+cookie is enough to tell visitors in the same room apart — and most actions
+both help the creature and cost something (cleaning is the one free
+action), so one person's choice changes what the next person in that room
+should reasonably do next.
+
+The creature can look like one of five fixed, hand-drawn appearances —
+Milo (the default), Plip, Bella, Simbaa, or Oliver — switched by any
+visitor in the room. It's purely cosmetic: switching never resets or
+changes stats, progress, or history, the same shared way a hat or scarf
+already worked before appearances existed. Everyone in the room sees
+whichever one is currently selected.
 
 ## Rooms
 
@@ -31,6 +39,23 @@ choice changes what the next person in that room should reasonably do next.
 - The original pre-rooms Milo still exists, as a room with the fixed code
   `COMMONS` — nothing about its history or age was lost when rooms were
   introduced.
+
+## Progression
+
+Two separate, both unranked, both room-level — never a per-visitor score:
+
+- **Milestones**: a lifetime count of every successful care action this
+  room has ever taken, with a short flavor-text label at five points along
+  the way (10, 50, 100, 250, 500). An open-ended "how much has this room
+  done together, total."
+- **Level**: a second, capped arc (levels 1 through 5) that unlocks a
+  growing set of cosmetics as the room's shared total grows, ending in a
+  golden crown at level 5. A closed-ended "how far along is this room,"
+  distinct from the open-ended milestone count above.
+
+Both move together — the same successful action feeds both — but neither
+is derived from the other, and neither is ever attributed to which
+visitor contributed what.
 
 ## What "good" means here (v1)
 
@@ -72,11 +97,13 @@ A few things we actually read while deciding this, not retrofitted after:
 
 ## What we chose not to build
 
-Accounts, chat, leaderboards, achievements, shops, inventories, AI,
-notifications, maps, an admin dashboard. No score for being the visitor who
-acted most — the history is unranked, on purpose. Rooms let multiple
-*groups* each have their own Milo, isolated from every other group — not a
-second creature within one room, not a per-user pet.
+Accounts, chat, leaderboards, shops, inventories, AI, notifications, maps,
+an admin dashboard. No score for being the visitor who acted most — the
+history is unranked, on purpose, and so are both of the room-level
+progress tracks described above. Rooms let multiple *groups* each have
+their own creature, isolated from every other group — not a second
+creature within one room, not a per-user pet; the five selectable
+appearances are five looks for that one creature, not five creatures.
 
 ## Tested vs. judged
 

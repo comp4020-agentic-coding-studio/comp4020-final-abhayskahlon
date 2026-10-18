@@ -1,6 +1,6 @@
 # COMMONS — project rules
 
-A single shared digital creature, Milo, cared for collectively by everyone
+A single shared digital creature, cared for collectively by everyone
 currently using the same room. Since crit 10 (PROCESS.md, Decision 13),
 "the room" is an explicit, chosen scope — a visitor joins one by code or
 hosts a new one — rather than the whole deployment; within a room, nothing
@@ -9,32 +9,43 @@ question — what happens when responsibility for one persistent being is
 shared across several people — and every decision behind the current shape
 of the app lives in `PROCESS.md`, including three real bugs found via human
 playtesting and how each was actually diagnosed and fixed ("Incidents found
-via human playtesting") and the crit 10 pivot to dedicated rooms (Decision
-13, `docs/adr/0002-multi-room-identity-and-access-control.md`). Read
-PROCESS.md before changing the schema, the action rules, the room/identity
-model, or the real-time mechanism; these rules summarise it for the agent,
-not replace it.
+via human playtesting"), the crit 10 pivot to dedicated rooms (Decision 13,
+`docs/adr/0002-multi-room-identity-and-access-control.md`), and the later
+addition of five selectable appearances and a shared level/XP track
+(Decisions 15 and 16). Read PROCESS.md before changing the schema, the
+action rules, the room/identity model, or the real-time mechanism; these
+rules summarise it for the agent, not replace it.
 
-The name "Milo" is a fixed literal (`src/pages/index.astro`, in both the
-frontmatter and the client script) — not a naming feature, nowhere settable
-by a visitor. Don't add a naming system; don't let the two literals drift
-apart if one of them ever needs editing.
+The room's one shared creature can look like one of five fixed, authored
+appearances — Milo (the default), Plip, Bella, Simbaa, or Oliver
+(`src/components/{Milo,Plip,Bella,Simbaa,Oliver}.astro`, dispatched through
+`CreatureDisplay.astro`) — stored in `creature.appearance` and switched via
+`/api/appearance` (PROCESS.md, Decision 15). This is **not** a naming
+feature: a visitor picks one of exactly five server-validated, pre-drawn
+looks, the same shared, cosmetic mechanism `hat`/`neckwear`/`glasses`
+already use — never free text, never a per-visitor choice, never a second
+creature. Every visitor in the room sees the same appearance, and
+switching it never touches stats, xp, milestones, or history. Don't add a
+free-text naming system; don't add a sixth appearance without updating
+`APPEARANCES`/`APPEARANCE_LABELS` (`src/lib/creature.ts`) and giving it its
+own component following the same pattern as the other five.
 
 ## The database is the only source of truth
 
 - SQLite (via Drizzle, `src/lib/db.ts`) holds the entire persistent state:
-  `rooms`, `creature` (one row **per room**, `roomId` unique), `sessions`
+  `rooms`, `creature` (one row **per room**, `roomId` unique — including
+  `appearance` and `xp`, Decisions 15/16, still exactly one row), `sessions`
   (each with a `roomId` — null until a visitor joins or hosts),
-  `care_events` (each row's `roomId` captured at action time, independent
-  of the session's *current* room), and `log_events` (a bounded, durable
-  record of every care action and room event, success and rejection
-  alike — see PROCESS.md, Decision 13's log-retention follow-up; its
-  `actor` column is always a one-way hash of the session id, from
-  `src/lib/log.ts`'s `actorTag()`, never the raw id). Every creature read
-  or write is scoped by `roomId`, and that `roomId` is always derived from
-  the trusted session cookie server-side — never a client-supplied field
-  (PROCESS.md, Decision 13; `docs/adr/0002-multi-room-identity-and-access-
-  control.md`).
+  `care_events` (each row's `roomId` AND `appearance` captured at action
+  time, independent of the session's *current* room or the room's *current*
+  appearance), and `log_events` (a bounded, durable record of every care
+  action and room event, success and rejection alike — see PROCESS.md,
+  Decision 13's log-retention follow-up; its `actor` column is always a
+  one-way hash of the session id, from `src/lib/log.ts`'s `actorTag()`,
+  never the raw id). Every creature read or write is scoped by `roomId`,
+  and that `roomId` is always derived from the trusted session cookie
+  server-side — never a client-supplied field (PROCESS.md, Decision 13;
+  `docs/adr/0002-multi-room-identity-and-access-control.md`).
 - No feature may use an in-memory array, a module-level variable, or
   `localStorage` as its primary record. The in-memory SSE client set in
   `src/lib/sse.ts` is the one deliberate exception, and it is never a record
@@ -82,6 +93,33 @@ apart if one of them ever needs editing.
   the creature is, not how hungry — the UI labels it "Fullness" for exactly
   this reason; don't flip the convention in one place without flipping it
   everywhere (schema comment, creature.ts, UI copy all assume it).
+
+## A second, additive shared progress track — XP and levels
+
+- `creature.xp` (cumulative, never decremented) and a **derived, never
+  stored** level 1–5 (`getProgression()`, `src/lib/creature.ts`) are a
+  second, independent progress axis alongside Decision 14's room-level
+  milestone total (`total_care_actions`) — not a replacement for it, and
+  not merged with it. Don't add a `level` column; compute it from `xp`
+  every time, the same "derive it, never store it" rule `health` already
+  follows (Decision 2).
+- Awarded only for a genuinely successful `feed`/`play`/`walk`/`clean`/
+  `sleep`/`adventure` (`XP_PER_ACTION`, a flat amount — never varied per
+  action), inside the same transaction that increments
+  `total_care_actions`. Never for a rejection, never for a wardrobe or
+  appearance change (PROCESS.md, Decision 16).
+- This is still room-level and unranked, same as every other shared field
+  here: `xp` is never joined against `sessions`, never shown per-visitor,
+  never a leaderboard — don't change that (PROCESS.md, Decision 6's
+  reasoning applies identically here).
+- Accessories (`ACCESSORIES` in `src/lib/creature.ts`) are gated by the
+  room's current level and, for a few items, by its current appearance.
+  There's no separate "unlocked" table: availability is always a pure
+  function of `(level, appearance)` checked against that static registry.
+  `performWardrobeChange` (`src/lib/db.ts`) validates both, inside its own
+  transaction, and rejects with a `409` + reason the same way a rejected
+  care action does — don't move that check back to static, pre-DB-read
+  validation in `api/wardrobe.ts`; it needs the room's live state.
 
 ## Real-time is SSE, and the database stays authoritative through it
 
@@ -210,3 +248,14 @@ per-user creature, no per-user ownership; what's allowed is multiple
 *rooms*, each isolated, each with its own single creature. Don't read this
 as license to add a second creature within one room, a per-user pet, or
 anything else this list otherwise still rules out.
+
+"Achievements" and "leaderboards" are, and remain, read the way Decision
+14 already established and Decision 16 confirms again: ruled out only in
+the sense of ranking one *visitor* against another. The room-level,
+unranked milestone total (Decision 14) and the room-level, unranked XP/
+level track with its level-gated cosmetics (Decision 16) are both the
+shared, collective-progress shape this line was never written to forbid —
+neither is ever joined against `sessions`, shown per-visitor, or usable to
+compare one visitor's contribution to another's. Don't read either as
+license to add anything that *does* rank visitors against each other; that
+line is still exactly as firm as it always was.

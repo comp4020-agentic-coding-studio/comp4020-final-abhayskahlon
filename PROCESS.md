@@ -700,6 +700,250 @@ migration.test.ts`: the column exists with the right default on a fresh
 database, and an already-roomed database's existing creature row is
 backfilled to exactly 0 with every other column untouched.
 
+## Decision 15 — five appearances, one shared creature
+
+**Decision.** The room's one shared creature can now look like one of five
+fixed, authored animals — Milo (the original, default), Plip (a penguin),
+Bella (a kitten), Simbaa (a lamb), or Oliver (a rabbit) — switched by any
+visitor in the room via a new `creature.appearance` column (`text`, not
+null, default `'milo'`) and `src/pages/api/appearance.ts`. This is **not**
+a second creature, a per-visitor pet, or five independent rooms' worth of
+state: switching appearance changes exactly one column on the one existing
+`creature` row, nothing else. Stats, condition, XP/level (Decision 16),
+the room's milestone total, equipped accessories, and care history are all
+completely unaffected by which appearance is currently selected — the same
+one `creature` row, the same one set of numbers, just rendered by a
+different one of five sibling Astro components (`src/components/{Milo,
+Plip,Bella,Simbaa,Oliver}.astro`) dispatched through a new
+`CreatureDisplay.astro`.
+
+**Why this reads as a pivot worth writing down, not a quiet contradiction.**
+CLAUDE.md said, verbatim, before this decision: *"Don't read this as
+license to add a second creature within one room, a per-user pet, or
+anything else this list otherwise still rules out."* That line is about
+**identity and ownership** — one shared being per room, not fragmented
+into several — and it still holds exactly as written: there is still
+`creature.roomId UNIQUE`, still exactly one row per room, still no
+per-visitor anything. What changed is purely cosmetic: which of five
+authored SVGs that one row's state is drawn as, the same category of
+choice `hat`/`neckwear` already were. CLAUDE.md is updated alongside this
+decision to say so explicitly, the same way Decision 13 updated it for the
+room pivot rather than letting the code silently drift from stated rules.
+
+**Why a new column, not a new table.** A literal "five animals per room"
+reading of the original feature request was considered and rejected after
+checking it against this app's own established rules first: it would have
+meant either five `creature` rows per room (breaking the `roomId UNIQUE`
+constraint load-bearing throughout `src/lib/db.ts`'s `readRow`/`toState`/
+`performAction`, none of which have any notion of "which of several
+creatures") or an entirely new `animals` table with its own stats/xp/
+history, duplicating every mechanism (concurrency-safe transactions,
+milestone tracking, wardrobe, SSE broadcast) this app already has working
+and tested for one creature. Confirmed directly with the person running
+this project before building anything: the five animals are **appearances
+for the one shared creature**, not five independent creatures — a much
+smaller, lower-risk change that needed zero new tables and zero changes to
+the `roomId UNIQUE` constraint.
+
+**Migration.** `drizzle/0006_yielding_thunderball.sql` — four purely
+additive `ALTER TABLE ... ADD ...` statements (`creature.appearance`,
+`creature.xp` — Decision 16, `creature.glasses`, `care_events.appearance`),
+no table rebuild, the same low-risk shape `drizzle/0005_*.sql` (milestones)
+already used. SQLite's own column defaults (`'milo'`, `0`) give every
+pre-existing room the correct starting values with no hand-written
+backfill: `'milo'` is the honest answer for "what did this room look like
+before appearances existed" (it's the only appearance that has ever
+existed), and `0` xp is Decision 16's own honest starting point. Verified
+against the same journal-timestamp-cut harness `spec/room-migration-
+backfill.test.ts`/`spec/log-events-migration.test.ts`/`spec/milestones-
+migration.test.ts` already established, in a new `spec/appearance-xp-
+migration.test.ts`.
+
+**Equipped accessories are shared, global state — independent of which
+appearance is selected, and switching never clears or re-validates them.**
+If the newly-selected appearance's component has no rendering branch for a
+currently-equipped item (the one deliberate case: `bunny-ears` is excluded
+from `oliver`'s compatible list in `src/lib/creature.ts`'s `ACCESSORIES`,
+since Oliver is already a rabbit — Decision 16), that appearance's
+component simply draws nothing for that slot; the stored value is
+untouched, so switching back to a compatible appearance shows it again
+with no data loss. This was a genuine design choice, not an unexamined
+edge case: the alternative (clearing an incompatible slot on switch) would
+mean a visitor's wardrobe choice could be silently destroyed by another
+visitor's unrelated choice of appearance, which is exactly the kind of
+one-visitor-undoes-another's-work bug Decision 4's whole transaction model
+exists to prevent for stats.
+
+**History attribution.** `care_events.appearance` captures which
+appearance was active **at the moment of that action** — the same
+"capture now, independent of what changes later" principle
+`care_events.roomId` already follows for room membership (CLAUDE.md). A
+later appearance switch never retroactively changes what an earlier
+history row says; `spec/appearance.test.ts` proves this directly (feed
+while "milo," switch to "bella," clean, switch to "oliver" — the feed
+entry still says Milo, the clean entry still says Bella).
+
+**Why no shared base component.** `Milo.astro` had no existing extraction
+seam, and the four new components (`Plip`/`Bella`/`Simbaa`/`Oliver.astro`)
+were each built by duplicating its proven skeleton (mood-driven face
+branching via the already species-agnostic `computeMood()`, the
+always-rendered-but-hidden reaction-mark pattern, a scoped `<style>` block
+with its own mood-tinted palette) rather than refactoring it into a shared
+base purely to support this feature. Reusing a component correctly already
+tested and shipped carries real regression risk for marginal benefit; four
+~400–600 line files of explicit, readable markup is a better trade than a
+parametrized abstraction invented for exactly five call sites.
+
+**Two real rendering bugs found and fixed during visual verification, not
+assumed correct from reading the markup.** (1) Every new creature
+component's glasses accessory was drawn *before* the face-expression
+group in source order — SVG painter's-order semantics mean later elements
+draw on top, so the face's own eye shapes silently painted over the
+glasses every time, making them invisible regardless of what was equipped.
+Found by actually rendering a creature with glasses equipped and looking
+at the screenshot; the code read as correct. Fixed by moving every
+glasses block to render after the face, and locked in by a new assertion
+in `spec/wardrobe.test.ts` checking the actual rendered class is present.
+(2) Simbaa's hand-rolled wool-silhouette path left her legs visibly
+disconnected from the body with a gap between them, and Oliver's first,
+taller ear geometry clipped upward past the SVG's own frame into the
+heading text rendered above it on the page. Both were visible only once
+actually screenshotted; both were fixed (Simbaa's body reuses Milo's own
+proven oval shape with small scalloped circles layered on for a woolly
+texture; Oliver's ears were shortened to stay inside the viewBox) and
+re-verified with fresh screenshots before being considered done.
+
+**Tests.** `spec/appearance.test.ts`: switching changes only `appearance`
+(stats/xp/milestones/equipped wardrobe/history length identical before and
+after, aside from the one new history row the switch itself adds); an
+unknown appearance value rejected (400) with nothing changed; switching
+with no room yet rejected (403); the switch is visible to every session in
+the room through the same `refreshLiveState()`/SSE mechanism every other
+change already uses; cross-room isolation (switching or earning xp in one
+room never touches a different room); and history attribution survives a
+later switch. `spec/realtime.test.ts` gained one test confirming a switch
+broadcasts the same `event: update` signal any other mutation does.
+`spec/wardrobe.test.ts` gained the glasses-rendering regression above.
+
+## Decision 16 — shared XP, levels, and level-gated accessories
+
+**Decision.** The room's one shared creature now has a second, independent
+progress axis alongside Decision 14's milestone total: a cumulative
+`creature.xp` integer (never decremented, never itself capped), and a
+**derived, never-stored** level 1–5 computed from it by one pure function,
+`getProgression()` (`src/lib/creature.ts`). A successful `feed`/`play`/
+`walk`/`clean`/`sleep`/`adventure` awards a flat `+20` xp; a rejected
+action or a cosmetic wardrobe/appearance change awards none. Five hats,
+two glasses styles, and three neckwear items are gated by the level
+reached, reusing `src/lib/creature.ts`'s `ACCESSORIES` registry, each
+entry declaring an `unlockLevel` and which of the five appearances its
+artwork actually supports; the level-5 golden crown is the one item this
+feature's brief explicitly called for.
+
+**Why a second track, not a replacement for Decision 14's milestones, and
+why confirmed with the project owner rather than assumed.** Both read the
+same underlying event (a genuinely successful action), but they answer
+different questions and were kept deliberately separate after asking,
+rather than guessing: `total_care_actions`/milestones is "how much care
+has this room given, ever" (an open-ended lifetime count with flavor-text
+labels at five points along the way); xp/level is "how far has this room
+progressed toward a fixed, capped goal" (bounded at level 5, with concrete
+unlocks attached). Merging them would force one number to carry two
+different shapes of meaning — unbounded vs. capped — that don't actually
+match.
+
+**Why a flat `+20` per action, not a per-action table.** Confirmed with
+the project owner as the simpler of two real options, rather than invented
+unilaterally: varying xp per action (rewarding `adventure`'s real
+cleanliness cost more than `clean`'s zero cost, for instance) was
+considered, but every action already has its own, separately-designed
+trade-off table (Decision 3) — adding a second, xp-specific weighting on
+top would mean two independent "which actions matter more" systems that
+could drift out of sync with no single source of truth for either. A flat
+award keeps "how many actions has this room taken" and "how much xp has
+this room earned" as the same number scaled by a constant, which is also
+exactly what keeps no single action "the efficient one to spam" (the
+brief's own stated goal) — spamming the free, always-available `clean`
+earns identical xp to the costlier `play`/`walk`/`sleep`/`adventure`, so
+there's no incentive to prefer it over genuinely caring for every stat.
+
+**The cumulative thresholds, read correctly against the brief.** The
+brief's 100/200/300/400 figures are XP *required for each transition*
+(level 1→2, 2→3, 3→4, 4→5), not cumulative lifetime totals — so the actual
+cumulative floors `LEVEL_XP_THRESHOLDS` stores are their running sum: 0,
+100, 300, 600, 1000. `getProgression()` is unit-tested at every one of
+these boundaries (`spec/progression.test.ts`) specifically because this
+off-by-one-interpretation risk (requiring vs. cumulative) is exactly the
+kind of thing that's easy to get quietly wrong and hard to notice later.
+
+**Why `level` is derived, never a stored column.** The exact same
+"compute it fresh from the numbers that are actually stored, never cache
+or duplicate it" principle `deriveHealth()` already established for
+`health`/condition (Decision 2) — `xp` is the one authoritative value;
+`level`, `xpIntoLevel`, and the progress-bar percentage are all recomputed
+from it on every read (`toState()`, `src/lib/db.ts`), so there is no
+second value that could ever drift out of sync with the real one.
+
+**Concurrency.** Awarded inside the exact same single, synchronous
+`db.transaction` every other `creature` write already uses (Decision 4) —
+a plain SQL increment (`xp: sql\`${creature.xp} + ${XP_PER_ACTION}\``),
+identical in shape to `totalCareActions`'s own increment on the very same
+line, so it inherits that mechanism's existing guarantee against lost
+updates under real concurrent requests with zero new code. Extended the
+existing genuinely-concurrent `Promise.all` standard
+(`spec/concurrency.test.ts`/`spec/milestones.test.ts`) to `spec/
+xp-awards.test.ts` to prove this directly rather than assume it transfers.
+
+**Accessory validation moved from static to dynamic, inside the
+transaction.** Before this decision, `api/wardrobe.ts` validated a
+slot/value pair entirely statically (is this one of two fixed strings) —
+there was no state-dependent eligibility rule to check. Now whether an
+accessory can be equipped depends on the room's *live* level and *current*
+appearance, both of which can only be read correctly from inside the same
+transaction that performs the write (the same "always derive from a fresh
+read inside the transaction" principle Decision 4 already established for
+stats) — so `performWardrobeChange` (`src/lib/db.ts`) now reads the row,
+computes `getProgression(row.xp).level`, and rejects with the same
+`{reason}` shape `performAction` already uses (surfaced as a `409`,
+never a silent no-op) when an item's `unlockLevel` exceeds the room's
+level or its `compatible` list excludes the room's current appearance.
+The one deliberately-chosen, tested example of species incompatibility is
+`bunny-ears` excluded from `oliver` (he's already a rabbit) — kept to one
+clear case rather than inventing many borderline ones, to keep this
+feature's scope controlled while still proving the mechanism works
+end-to-end.
+
+**No persisted "unlocked" state at all.** Whether an accessory is
+currently available is a pure function of `(level, appearance)` checked
+against the static `ACCESSORIES` registry — the same derive-don't-
+duplicate principle this decision's own `level` field already follows for
+`xp`. "Unlocked accessories persist across sessions and restarts" falls
+out for free, since `xp` already does; there is no separate per-room
+unlock-tracking table to keep in sync or to ever disagree with the real
+source of truth.
+
+**UI.** Locked items are shown, not hidden, with a `"— Level N"` suffix
+and a `disabled` button (defense in depth — the server's own check is the
+real authority, never relied on alone), per the brief's explicit
+requirement that a locked item stay discoverable rather than silently
+vanish. The XP bar shows `Level N · X / Y XP` with real numbers (never
+color-only) and a `role="progressbar"` element carrying `aria-valuenow/
+min/max`; at the level cap it shows a distinct "max level" state instead
+of a bar that looks perpetually full with no visible ceiling.
+
+**Tests.** `spec/progression.test.ts`: every level boundary (including the
+exact cumulative thresholds, never one xp early or late), the four
+transition widths matching the brief's 100/200/300/400 figures, the
+level-5 cap holding under an arbitrarily large xp value, and a single
+multi-level jump landing correctly. `spec/xp-awards.test.ts`: a fresh room
+starts at level 1/0xp; each of the six real interactions awards exactly 20
+on success and 0 on rejection; wardrobe and appearance changes award 0;
+leveling up at exactly the action that crosses a threshold; a level-gated
+item rejected before and accepted after the room reaches that level; the
+golden crown rejected below level 5; `bunny-ears` rejected for the
+`oliver` appearance even at a qualifying level; and the existing
+genuinely-concurrent standard extended to xp.
+
 ## Out of scope for this deliverable (unchanged from the course's own list)
 
 No accounts/profiles, chat, voting/likes, maps, push/SMS/email

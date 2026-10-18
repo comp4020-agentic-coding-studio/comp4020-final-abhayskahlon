@@ -3,6 +3,18 @@
 What's changed, in plain terms, newest first — read live via `/patch-notes/`
 and summarised on the entry page's own "what's new in COMMONS" section.
 
+## Patch 1.3 — Five looks for Milo, and a shared level to work toward
+
+The shared creature can now look like one of five appearances — Milo, Plip
+the penguin, Bella the kitten, Simbaa the lamb, or Oliver the rabbit —
+switched by anyone in the room. It's purely cosmetic: switching never
+resets or changes stats, history, or progress, the same way wearing a hat
+never did. Alongside the existing room milestone count, there's now a
+second shared track: a level from 1 to 5, earned by real care, that
+unlocks a growing set of hats, glasses, and scarves along the way,
+ending in a golden crown at level 5. Both tracks are room-level and
+unranked — nothing here is broken down by who did what, same as always.
+
 ## Patch 1.2 — A welcome page that actually looks like COMMONS
 
 The entry page's background used to be an abstract shape that only claimed

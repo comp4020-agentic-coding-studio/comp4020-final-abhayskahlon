@@ -10,11 +10,12 @@
 // change at the call site, and no two icons compete stylistically.
 import type { ActionName } from "../lib/creature";
 
-// Widened locally to also cover the two shared-activity event kinds
-// (wardrobe changes, adventures) that appear in Recent care alongside the
-// five real care actions — deliberately not by widening ActionName itself
-// in src/lib/creature.ts, which stays exactly the five-item care vocabulary.
-type IconSubject = ActionName | "wardrobe" | "adventure";
+// Widened locally to also cover the shared-activity event kinds (wardrobe
+// changes, adventures, appearance switches) that appear in Recent care
+// alongside the five real care actions — deliberately not by widening
+// ActionName itself in src/lib/creature.ts, which stays exactly the
+// five-item care vocabulary.
+type IconSubject = ActionName | "wardrobe" | "adventure" | "appearance";
 
 interface Props {
   action: IconSubject;
@@ -102,6 +103,17 @@ const { action, class: className } = Astro.props;
         <ellipse cx="7" cy="17" rx="2.1" ry="2.8" transform="rotate(-12 7 17)" />
         <ellipse cx="12.5" cy="11.5" rx="2.1" ry="2.8" transform="rotate(-8 12.5 11.5)" />
         <ellipse cx="18" cy="6.5" rx="2.1" ry="2.8" transform="rotate(-4 18 6.5)" />
+      </>
+    )
+  }
+  {
+    action === "appearance" && (
+      <>
+        {/* two curved swap arrows */}
+        <path d="M4.5 9a7.5 7.5 0 0 1 13-5l1.5 1.5" />
+        <path d="M19.5 15a7.5 7.5 0 0 1-13 5L5 18.5" />
+        <path d="M17 3.8v2.7h-2.7" />
+        <path d="M7 20.2v-2.7h2.7" />
       </>
     )
   }

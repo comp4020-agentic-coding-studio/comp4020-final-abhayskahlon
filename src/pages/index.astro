@@ -5,7 +5,7 @@ import { pickDialogue } from "../components/dialogue";
 import Milo from "../components/Milo.astro";
 import StatIcon from "../components/StatIcon.astro";
 import { getLatestPatch } from "../lib/changelog";
-import { ACCESSORIES, ACTIONS, type AccessorySlot, type ActionName } from "../lib/creature";
+import { ACCESSORIES, ACTIONS, APPEARANCE_LABELS, type AccessorySlot, type ActionName } from "../lib/creature";
 import { defaultCreatureStats, getCreatureState, getSessionRoom } from "../lib/db";
 import { DISPLAY_NAME_MAX_LENGTH, ROOM_CODE_LENGTH } from "../lib/room";
 import { getOrCreateSession } from "../lib/session";
@@ -77,6 +77,7 @@ const ACTION_LABELS: Record<string, string> = {
   sleep: "Sleep",
   wardrobe: "Wardrobe",
   adventure: "Adventure",
+  appearance: "Appearance",
 };
 
 const ACTION_PAST_TENSE: Record<string, string> = {
@@ -87,6 +88,7 @@ const ACTION_PAST_TENSE: Record<string, string> = {
   sleep: "put to sleep",
   wardrobe: "dressed",
   adventure: "adventured with",
+  appearance: "switched the look of",
 };
 
 // Minimal "something just happened" feedback — never its own state, always
@@ -435,7 +437,8 @@ const activityPhrase =
                         <ActionIcon action={entry.action as ActionName} class="history-icon" />
                         <span>
                           <strong>{entry.actorLabel}</strong> {ACTION_PAST_TENSE[entry.action] ?? entry.action}{" "}
-                          {CREATURE_NAME} ({entry.summary}) — <span class="history-time">{entry.createdAt}</span>
+                          {APPEARANCE_LABELS[entry.appearance] ?? CREATURE_NAME} ({entry.summary}) —{" "}
+                          <span class="history-time">{entry.createdAt}</span>
                         </span>
                       </li>
                     ))

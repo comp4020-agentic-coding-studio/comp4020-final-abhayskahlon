@@ -150,6 +150,37 @@ describe("wardrobe", () => {
     expect(afterOff.querySelector(".history-list")?.textContent).toContain("now wearing: Scarf");
   });
 
+  // Regression: glasses render AFTER the face in every creature component
+  // (src/components/*.astro), not alongside hat/neckwear — drawing them
+  // earlier let the face's own eye shapes paint over them, hiding them
+  // entirely. Found via visual verification (screenshots), not assumed
+  // correct from reading the markup alone.
+  it("equipping glasses actually renders them, on every one of the five appearances", async () => {
+    const cookie = await newVisitor();
+    // round-glasses unlocks at level 3 (300 cumulative xp = 15 successful
+    // actions at 20 xp each) — level the room up first.
+    for (let i = 0; i < 15; i++) {
+      const res = await post("/api/actions", cookie, new URLSearchParams({ action: "clean" }));
+      expect(res.status).toBe(303);
+    }
+
+    const glassesRes = await post("/api/wardrobe", cookie, new URLSearchParams({ slot: "glasses", value: "round-glasses" }));
+    expect(glassesRes.status).toBe(303);
+
+    const milo = await loadHome(cookie);
+    expect(milo.querySelector(".milo-round-glasses"), "expected glasses to render on the default Milo appearance").not.toBeNull();
+
+    for (const appearance of ["plip", "bella", "simbaa", "oliver"]) {
+      const switchRes = await post("/api/appearance", cookie, new URLSearchParams({ appearance }));
+      expect(switchRes.status).toBe(303);
+      const doc = await loadHome(cookie);
+      expect(
+        doc.querySelector(`.${appearance}-round-glasses`),
+        `expected glasses to render on the ${appearance} appearance`,
+      ).not.toBeNull();
+    }
+  });
+
   it("rejects an unknown slot or an option outside that slot's vocabulary, changing nothing", async () => {
     const cookie = await newVisitor();
     const before = await loadHome(cookie);

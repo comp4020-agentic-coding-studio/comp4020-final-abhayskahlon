@@ -29,9 +29,10 @@ interface Props {
   stats: Stats;
   hat?: HatOption | null;
   neckwear?: NeckwearOption | null;
+  glasses?: string | null;
 }
 
-const { activity, stats, hat = null, neckwear = null } = Astro.props;
+const { activity, stats, hat = null, neckwear = null, glasses = null } = Astro.props;
 const sleeping = activity === "sleeping";
 const { family, severe } = computeMood(stats, activity);
 
@@ -96,6 +97,44 @@ function sparkle(cx: number, cy: number, r: number): string {
       )
     }
     {
+      hat === "beanie" && (
+        <g class="milo-wardrobe milo-beanie" aria-hidden="true">
+          <path d="M62 24c0-12 8-21 18-21s18 9 18 21z" />
+          <rect x="60" y="20" width="40" height="7" rx="3" />
+          <circle cx="80" cy="3" r="4" class="milo-beanie-pom" />
+        </g>
+      )
+    }
+    {
+      hat === "bunny-ears" && (
+        <g class="milo-wardrobe milo-bunny-ears" aria-hidden="true">
+          <ellipse cx="64" cy="-6" rx="8" ry="28" transform="rotate(-8 64 -6)" />
+          <ellipse cx="96" cy="-6" rx="8" ry="28" transform="rotate(8 96 -6)" />
+          <ellipse class="milo-bunny-ears-inner" cx="64" cy="-6" rx="4" ry="20" transform="rotate(-8 64 -6)" />
+          <ellipse class="milo-bunny-ears-inner" cx="96" cy="-6" rx="4" ry="20" transform="rotate(8 96 -6)" />
+        </g>
+      )
+    }
+    {
+      hat === "wizard-hat" && (
+        <g class="milo-wardrobe milo-wizard-hat" aria-hidden="true">
+          <path d="M80 -2 L62 26 L98 26 Z" />
+          <ellipse cx="80" cy="26" rx="22" ry="4" />
+          <circle cx="76" cy="14" r="1.6" class="milo-wizard-star" />
+          <circle cx="86" cy="8" r="1.3" class="milo-wizard-star" />
+        </g>
+      )
+    }
+    {
+      hat === "golden-crown" && (
+        <g class="milo-wardrobe milo-golden-crown" aria-hidden="true">
+          <path d="M60 24 L66 8 L74 18 L80 4 L86 18 L94 8 L100 24 Z" />
+          <rect x="60" y="22" width="40" height="6" rx="2" />
+          <circle cx="80" cy="4" r="2.4" class="milo-crown-gem" />
+        </g>
+      )
+    }
+    {
       neckwear === "bow-tie" && (
         <g class="milo-wardrobe milo-bow-tie" aria-hidden="true">
           <path d="M80 108 L68 102 L68 114 Z" />
@@ -109,6 +148,14 @@ function sparkle(cx: number, cy: number, r: number): string {
         <g class="milo-wardrobe milo-scarf" aria-hidden="true">
           <path d="M57 106c6 8 40 8 46 0l-2 9c-11 5-31 5-42 0z" />
           <path d="M90 112l8 16-10 1-5-15z" class="milo-scarf-tail" />
+        </g>
+      )
+    }
+    {
+      neckwear === "knit-scarf" && (
+        <g class="milo-wardrobe milo-knit-scarf" aria-hidden="true">
+          <path d="M55 106c7 9 43 9 50 0l-2 10c-13 6-33 6-46 0z" />
+          <path d="M88 115l6 18-9 1-5-17z" class="milo-knit-scarf-tail" />
         </g>
       )
     }
@@ -204,6 +251,30 @@ function sparkle(cx: number, cy: number, r: number): string {
               <path class="milo-stink milo-stink-2" d="M136 64c2-4-2-6 0-10s-2-6 0-10" />
             </>
           )}
+        </g>
+      )
+    }
+
+    {/* Glasses render AFTER the face, not alongside hat/neckwear above:
+        they occupy the same screen area as the eyes, so drawing them
+        earlier let the face's own eye shapes paint over them, hiding them
+        entirely — found and fixed during visual verification, not assumed
+        correct from reading the code alone. */}
+    {
+      glasses === "round-glasses" && (
+        <g class="milo-wardrobe milo-round-glasses" aria-hidden="true">
+          <circle cx="56" cy="76" r="9" />
+          <circle cx="104" cy="76" r="9" />
+          <path d="M65 76h30" />
+        </g>
+      )
+    }
+    {
+      glasses === "heart-glasses" && (
+        <g class="milo-wardrobe milo-heart-glasses" aria-hidden="true">
+          <path d="M56 71c-3-3-8-2-8 2 0 3 4 6 8 9 4-3 8-6 8-9 0-4-5-5-8-2z" />
+          <path d="M104 71c-3-3-8-2-8 2 0 3 4 6 8 9 4-3 8-6 8-9 0-4-5-5-8-2z" />
+          <path d="M64 76h32" />
         </g>
       )
     }
@@ -364,6 +435,53 @@ function sparkle(cx: number, cy: number, r: number): string {
   .milo-scarf,
   .milo-scarf-tail {
     fill: #3f8f5f;
+  }
+
+  .milo-knit-scarf,
+  .milo-knit-scarf-tail {
+    fill: #6a4fae;
+  }
+
+  .milo-beanie {
+    fill: #5b8aa8;
+  }
+
+  .milo-beanie-pom {
+    fill: #fff;
+  }
+
+  .milo-bunny-ears {
+    fill: #ffe0ea;
+  }
+
+  .milo-bunny-ears-inner {
+    fill: #ff9fc0;
+    stroke: none;
+  }
+
+  .milo-wizard-hat {
+    fill: #5a3fae;
+  }
+
+  .milo-wizard-star {
+    fill: #ffd76b;
+    stroke: none;
+  }
+
+  .milo-golden-crown {
+    fill: #f4c430;
+  }
+
+  .milo-crown-gem {
+    fill: #c7453a;
+    stroke: none;
+  }
+
+  .milo-round-glasses,
+  .milo-heart-glasses {
+    fill: none;
+    stroke: #2b2420;
+    stroke-width: 2.2;
   }
 
   /* ---------- mood tints: the one place body colour changes ---------- */

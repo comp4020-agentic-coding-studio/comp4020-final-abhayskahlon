@@ -1,0 +1,30 @@
+---
+// The one dispatch point between "which of the five fixed appearances is
+// this room's shared creature currently wearing" and "which component
+// actually renders it" (PROCESS.md, Decision 15). Every one of the five
+// sibling components (Milo.astro, Plip.astro, Bella.astro, Simbaa.astro,
+// Oliver.astro) takes the exact same Props shape, so this is a pure
+// lookup — no other file needs to know the dispatch exists.
+import type { AppearanceId, Activity, Stats } from "../lib/creature";
+import Milo from "./Milo.astro";
+import Plip from "./Plip.astro";
+import Bella from "./Bella.astro";
+import Simbaa from "./Simbaa.astro";
+import Oliver from "./Oliver.astro";
+
+interface Props {
+  appearance: AppearanceId;
+  activity: Activity;
+  stats: Stats;
+  hat?: string | null;
+  neckwear?: string | null;
+  glasses?: string | null;
+}
+
+const { appearance, ...rest } = Astro.props;
+
+const COMPONENTS = { milo: Milo, plip: Plip, bella: Bella, simbaa: Simbaa, oliver: Oliver } as const;
+const Creature = COMPONENTS[appearance];
+---
+
+<Creature {...rest} />

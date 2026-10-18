@@ -1,0 +1,658 @@
+---
+// Plip's visual identity — a penguin, one of the five fixed, authored
+// appearances the room's one shared creature can switch between
+// (PROCESS.md, Decision 15). A self-contained sibling of Milo.astro: same
+// Props shape, same mood-driven face branching via the already
+// species-agnostic computeMood() (src/components/mood.ts), same
+// always-rendered-but-hidden reaction-mark pattern, same scoped-style
+// approach — deliberately NOT refactored into a shared base component with
+// Milo.astro (see PROCESS.md, Decision 15, "no premature abstraction").
+//
+// Distinguishing silhouette: a rounded oval body, two short flipper arms,
+// an orange triangular beak, webbed orange feet, no visible ears (a real
+// penguin trait — this is also why `bunny-ears` is excluded from Plip's
+// compatible list in src/lib/creature.ts's ACCESSORIES, alongside the one
+// deliberate oliver exclusion).
+import type { Activity, Stats } from "../lib/creature";
+import { computeMood } from "./mood";
+
+interface Props {
+  activity: Activity;
+  stats: Stats;
+  hat?: string | null;
+  neckwear?: string | null;
+  glasses?: string | null;
+}
+
+const { activity, stats, hat = null, neckwear = null, glasses = null } = Astro.props;
+const sleeping = activity === "sleeping";
+const { family, severe } = computeMood(stats, activity);
+
+function sparkle(cx: number, cy: number, r: number): string {
+  const inner = r * 0.22;
+  return `M${cx} ${cy - r} L${cx + inner} ${cy - inner} L${cx + r} ${cy} L${cx + inner} ${cy + inner} L${cx} ${cy + r} L${cx - inner} ${cy + inner} L${cx - r} ${cy} L${cx - inner} ${cy - inner} Z`;
+}
+---
+
+<div class={`plip-visual plip-${family}`} data-severe={severe ? "true" : "false"}>
+  <svg viewBox="0 0 160 160" class="plip-svg" role="img" aria-label={`Plip, ${sleeping ? "asleep" : family}`}>
+    <!-- webbed feet -->
+    <path class="plip-foot" d="M50 146c-4 2-9 2-12 0l3-5h12z" />
+    <path class="plip-foot" d="M110 146c4 2 9 2 12 0l-3-5h-12z" />
+
+    <!-- flipper arms, drawn before the body so the body overlaps their tops -->
+    <path class="plip-flipper" d="M38 82c-10 6-14 20-10 32 2-3 10-9 14-20z" />
+    <path class="plip-flipper" d="M122 82c10 6 14 20 10 32-2-3-10-9-14-20z" />
+
+    <!-- body: a tall rounded oval, no ears -->
+    <path
+      class="plip-body-fill"
+      d="M80 16c28 0 48 22 48 58 0 32-20 58-48 58s-48-26-48-58c0-36 20-58 48-58z"
+    />
+
+    <!-- white belly patch, the classic penguin front -->
+    <path class="plip-belly" d="M80 44c18 0 30 16 30 38 0 20-12 36-30 36s-30-16-30-36c0-22 12-38 30-38z" />
+
+    <!-- cheeks -->
+    <ellipse class="plip-cheek" cx="56" cy="84" rx="7" ry="4.5" />
+    <ellipse class="plip-cheek" cx="104" cy="84" rx="7" ry="4.5" />
+
+    <!-- beak, drawn after the face group positions so it sits centered low -->
+    <path class="plip-beak" d="M80 90c-5 0-9 3-9 7s4 6 9 6 9-2 9-6-4-7-9-7z" />
+
+    {
+      hat === "top-hat" && (
+        <g class="plip-wardrobe plip-hat-top" aria-hidden="true">
+          <path d="M64 21c0-11 7-19 16-19s16 8 16 19z" />
+          <ellipse cx="80" cy="21" rx="20" ry="4" />
+          <rect x="65" y="12" width="30" height="5" />
+        </g>
+      )
+    }
+    {
+      hat === "party-hat" && (
+        <g class="plip-wardrobe plip-hat-party" aria-hidden="true">
+          <path d="M80 1 L65 24 L95 24 Z" />
+          <path d="M80 1 L75 12 L85 12 Z" class="plip-hat-party-stripe" />
+          <circle cx="80" cy="1" r="3" class="plip-hat-party-pom" />
+        </g>
+      )
+    }
+    {
+      hat === "beanie" && (
+        <g class="plip-wardrobe plip-beanie" aria-hidden="true">
+          <path d="M62 24c0-12 8-21 18-21s18 9 18 21z" />
+          <rect x="60" y="20" width="40" height="7" rx="3" />
+          <circle cx="80" cy="3" r="4" class="plip-beanie-pom" />
+        </g>
+      )
+    }
+    {
+      hat === "wizard-hat" && (
+        <g class="plip-wardrobe plip-wizard-hat" aria-hidden="true">
+          <path d="M80 -2 L62 26 L98 26 Z" />
+          <ellipse cx="80" cy="26" rx="22" ry="4" />
+          <circle cx="76" cy="14" r="1.6" class="plip-wizard-star" />
+          <circle cx="86" cy="8" r="1.3" class="plip-wizard-star" />
+        </g>
+      )
+    }
+    {
+      hat === "golden-crown" && (
+        <g class="plip-wardrobe plip-golden-crown" aria-hidden="true">
+          <path d="M60 24 L66 8 L74 18 L80 4 L86 18 L94 8 L100 24 Z" />
+          <rect x="60" y="22" width="40" height="6" rx="2" />
+          <circle cx="80" cy="4" r="2.4" class="plip-crown-gem" />
+        </g>
+      )
+    }
+    {
+      neckwear === "bow-tie" && (
+        <g class="plip-wardrobe plip-bow-tie" aria-hidden="true">
+          <path d="M80 112 L68 106 L68 118 Z" />
+          <path d="M80 112 L92 106 L92 118 Z" />
+          <circle cx="80" cy="112" r="3.2" class="plip-bow-knot" />
+        </g>
+      )
+    }
+    {
+      neckwear === "scarf" && (
+        <g class="plip-wardrobe plip-scarf" aria-hidden="true">
+          <path d="M57 108c6 8 40 8 46 0l-2 9c-11 5-31 5-42 0z" />
+          <path d="M90 115l8 16-10 1-5-15z" class="plip-scarf-tail" />
+        </g>
+      )
+    }
+    {
+      neckwear === "knit-scarf" && (
+        <g class="plip-wardrobe plip-knit-scarf" aria-hidden="true">
+          <path d="M55 109c7 9 43 9 50 0l-2 10c-13 6-33 6-46 0z" />
+          <path d="M88 118l6 18-9 1-5-17z" class="plip-knit-scarf-tail" />
+        </g>
+      )
+    }
+
+    {
+      sleeping ? (
+        <g class="plip-face plip-face-sleeping">
+          <path class="plip-eye-line" d="M48 78c5-5 13-5 18 0" />
+          <path class="plip-eye-line" d="M94 78c5-5 13-5 18 0" />
+          <g class="plip-zzz" aria-hidden="true">
+            <text x="112" y="50" class="plip-zzz-char plip-zzz-1">z</text>
+            <text x="124" y="38" class="plip-zzz-char plip-zzz-2">z</text>
+            <text x="136" y="27" class="plip-zzz-char plip-zzz-3">z</text>
+          </g>
+        </g>
+      ) : family === "happy" ? (
+        <g class="plip-face">
+          <ellipse class="plip-eye" cx="56" cy="80" rx="9" ry="10" />
+          <ellipse class="plip-eye" cx="104" cy="80" rx="8" ry="9" />
+          <circle class="plip-eye-highlight" cx="59" cy="76" r="2.4" />
+          <circle class="plip-eye-highlight" cx="106" cy="76.5" r="2" />
+        </g>
+      ) : family === "excited" ? (
+        <g class="plip-face">
+          <ellipse class="plip-eye" cx="56" cy="80" rx="9.5" ry="10.5" />
+          <ellipse class="plip-eye" cx="104" cy="80" rx="8.5" ry="9.5" />
+          <circle class="plip-eye-highlight" cx="59" cy="75.5" r="2.7" />
+          <circle class="plip-eye-highlight" cx="106.5" cy="76" r="2.3" />
+          <g class="plip-sparkle-ambient" aria-hidden="true">
+            <path d={sparkle(18, 48, 6.5)} />
+            <path d={sparkle(136, 42, 6)} />
+          </g>
+        </g>
+      ) : family === "sleepy" ? (
+        <g class="plip-face">
+          <path class="plip-eye-lid" d="M47 76c4-3 14-3 18 0l-1 6c-4 2-12 2-16 0z" />
+          <path class="plip-eye-lid" d="M95 76c4-3 13-3 17 0l-1 6c-4 2-11 2-15 0z" />
+          {severe && <text x="100" y="60" class="plip-zzz-char plip-zzz-solo">z</text>}
+        </g>
+      ) : family === "hungry" ? (
+        <g class="plip-face">
+          <path class="plip-brow-up" d="M48 69c3-3 9-3 12-1" />
+          <path class="plip-brow-up" d="M100 68c3-3 9-3 12 1" />
+          <ellipse class="plip-eye" cx="56" cy="82" rx="9.5" ry="10" />
+          <ellipse class="plip-eye" cx="104" cy="82" rx="8.5" ry="9" />
+          <circle class="plip-eye-highlight" cx="59" cy="78" r="2.5" />
+          <circle class="plip-eye-highlight" cx="106" cy="78.5" r="2" />
+          {severe && <path class="plip-rumble" d="M66 103c4-6 8 6 12 0s8-6 12 0" />}
+        </g>
+      ) : family === "sad" ? (
+        <g class="plip-face">
+          <path class="plip-brow-down" d="M48 71c3 3 9 4 12 2" />
+          <path class="plip-brow-down" d="M100 73c3-2 9-3 12-1" />
+          <ellipse class="plip-eye" cx="56" cy="82" rx="8" ry="8.5" />
+          <ellipse class="plip-eye" cx="104" cy="82" rx="7" ry="7.5" />
+          {severe && (
+            <g class="plip-cloud" aria-hidden="true">
+              <path d="M58 22c-5 0-8 3-9 6-4 1-7 4-7 8 0 4 4 7 8 7h23c4 0 7-3 7-7 0-3-2-6-5-7 0-5-4-9-9-9-3 0-6 1-8 2z" />
+              <path class="plip-raindrop plip-raindrop-1" d="M58 46v5" />
+              <path class="plip-raindrop plip-raindrop-2" d="M70 48v5" />
+            </g>
+          )}
+        </g>
+      ) : (
+        <g class="plip-face">
+          <path class="plip-eye-line plip-eye-squint" d="M47 79c4-4 13-4 18 0" />
+          <ellipse class="plip-eye" cx="104" cy="81" rx="7" ry="7.5" />
+          <circle class="plip-eye-highlight" cx="106" cy="78" r="1.7" />
+          <g class="plip-dirt" aria-hidden="true">
+            <ellipse cx="64" cy="118" rx="2.6" ry="1.8" transform="rotate(20 64 118)" />
+            <ellipse cx="94" cy="122" rx="2.2" ry="1.6" transform="rotate(-15 94 122)" />
+            <ellipse cx="74" cy="129" rx="2" ry="1.5" />
+          </g>
+          {severe && (
+            <>
+              <path class="plip-stink plip-stink-1" d="M26 72c-2-4 2-6 0-10s2-6 0-10" />
+              <path class="plip-stink plip-stink-2" d="M136 68c2-4-2-6 0-10s-2-6 0-10" />
+            </>
+          )}
+        </g>
+      )
+    }
+
+    {
+      glasses === "round-glasses" && (
+        <g class="plip-wardrobe plip-round-glasses" aria-hidden="true">
+          <circle cx="60" cy="83" r="9" />
+          <circle cx="100" cy="83" r="9" />
+          <path d="M69 83h22" />
+        </g>
+      )
+    }
+    {
+      glasses === "heart-glasses" && (
+        <g class="plip-wardrobe plip-heart-glasses" aria-hidden="true">
+          <path d="M60 78c-3-3-8-2-8 2 0 3 4 6 8 9 4-3 8-6 8-9 0-4-5-5-8-2z" />
+          <path d="M100 78c-3-3-8-2-8 2 0 3 4 6 8 9 4-3 8-6 8-9 0-4-5-5-8-2z" />
+          <path d="M68 83h24" />
+        </g>
+      )
+    }
+
+    <g class="plip-reaction plip-reaction-feed" aria-hidden="true">
+      <circle cx="66" cy="112" r="3.2" />
+      <circle cx="94" cy="114" r="2.6" />
+      <circle cx="80" cy="120" r="2.3" />
+    </g>
+    <g class="plip-reaction plip-reaction-play" aria-hidden="true">
+      <path d={sparkle(36, 62, 7)} />
+      <path d={sparkle(124, 58, 6)} />
+      <path d={sparkle(80, 30, 5)} />
+    </g>
+    <g class="plip-reaction plip-reaction-walk" aria-hidden="true">
+      <path d="M24 136c-4 1-6 4-6 7" />
+      <path d="M19 125c-4 1-7 3-8 6" />
+      <path d="M27 147c-4 0-7 2-8 5" />
+    </g>
+    <g class="plip-reaction plip-reaction-clean" aria-hidden="true">
+      <circle class="plip-bubble" cx="38" cy="72" r="4" />
+      <circle class="plip-bubble" cx="125" cy="62" r="3" />
+      <circle class="plip-bubble" cx="119" cy="98" r="2.4" />
+      <path d={sparkle(80, 58, 5)} />
+    </g>
+    <g class="plip-reaction plip-reaction-adventure" aria-hidden="true">
+      <ellipse class="plip-mud" cx="58" cy="122" rx="6" ry="3.5" transform="rotate(-10 58 122)" />
+      <ellipse class="plip-mud" cx="100" cy="128" rx="5" ry="3" transform="rotate(8 100 128)" />
+      <ellipse class="plip-mud" cx="78" cy="134" rx="4" ry="2.4" />
+    </g>
+  </svg>
+</div>
+
+<style>
+  .plip-visual {
+    position: relative;
+    display: inline-block;
+    width: clamp(7.5rem, 24vw, 10.5rem);
+    margin: 0 auto;
+  }
+
+  .plip-svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+  }
+
+  .plip-body-fill {
+    fill: var(--plip-body, #2b2f36);
+    stroke: var(--plip-outline, #1a1c20);
+    stroke-width: 3;
+    stroke-linejoin: round;
+  }
+
+  .plip-foot,
+  .plip-beak {
+    fill: var(--plip-beak, #ff9d3d);
+    stroke: var(--plip-outline, #1a1c20);
+    stroke-width: 2.4;
+    stroke-linejoin: round;
+  }
+
+  .plip-flipper {
+    fill: var(--plip-body, #2b2f36);
+    stroke: var(--plip-outline, #1a1c20);
+    stroke-width: 2.6;
+    stroke-linejoin: round;
+  }
+
+  .plip-belly {
+    fill: var(--plip-belly, #f4f7fb);
+    stroke: none;
+  }
+
+  .plip-cheek {
+    fill: #ffb3a3;
+    opacity: 0.4;
+    transform-origin: center;
+  }
+
+  .plip-eye,
+  .plip-eye-lid {
+    fill: var(--plip-face-ink, #16181c);
+  }
+
+  .plip-eye-line,
+  .plip-eye-squint {
+    fill: none;
+    stroke: var(--plip-face-ink, #16181c);
+    stroke-width: 3;
+    stroke-linecap: round;
+  }
+
+  .plip-eye-bag,
+  .plip-brow-up,
+  .plip-brow-down,
+  .plip-rumble,
+  .plip-stink {
+    fill: none;
+    stroke: var(--plip-face-ink, #16181c);
+    stroke-width: 2;
+    stroke-linecap: round;
+    opacity: 0.55;
+  }
+
+  .plip-eye-highlight {
+    fill: #fff;
+  }
+
+  .plip-wardrobe {
+    stroke: var(--plip-face-ink, #16181c);
+    stroke-width: 1.6;
+    stroke-linejoin: round;
+  }
+
+  .plip-hat-top {
+    fill: #2b2420;
+  }
+  .plip-hat-party {
+    fill: #ff8a5b;
+  }
+  .plip-hat-party-stripe {
+    fill: #fff6d8;
+  }
+  .plip-hat-party-pom {
+    fill: #ffcf6b;
+  }
+  .plip-beanie {
+    fill: #5b8aa8;
+  }
+  .plip-beanie-pom {
+    fill: #fff;
+  }
+  .plip-wizard-hat {
+    fill: #5a3fae;
+  }
+  .plip-wizard-star {
+    fill: #ffd76b;
+    stroke: none;
+  }
+  .plip-golden-crown {
+    fill: #f4c430;
+  }
+  .plip-crown-gem {
+    fill: #c7453a;
+    stroke: none;
+  }
+  .plip-round-glasses,
+  .plip-heart-glasses {
+    fill: none;
+    stroke: #2b2420;
+    stroke-width: 2.2;
+  }
+  .plip-bow-tie {
+    fill: #c7453a;
+  }
+  .plip-bow-knot {
+    fill: #9c342b;
+    stroke: none;
+  }
+  .plip-scarf,
+  .plip-scarf-tail {
+    fill: #3f8f5f;
+  }
+  .plip-knit-scarf,
+  .plip-knit-scarf-tail {
+    fill: #6a4fae;
+  }
+
+  .plip-happy,
+  .plip-excited {
+    --plip-body: #2b2f36;
+    --plip-belly: #f4f7fb;
+  }
+
+  .plip-sleepy,
+  .plip-sleeping {
+    --plip-body: #3c4049;
+    --plip-belly: #dfe4ea;
+  }
+
+  .plip-hungry {
+    --plip-body: #343841;
+    --plip-belly: #eef1f5;
+  }
+
+  .plip-sad {
+    --plip-body: #39404d;
+    --plip-belly: #dde3ec;
+  }
+
+  .plip-messy {
+    --plip-body: #4a4336;
+    --plip-belly: #d9cfb8;
+  }
+
+  .plip-sparkle-ambient path {
+    fill: #ffcf6b;
+  }
+
+  .plip-cloud path:first-child {
+    fill: #c6d3e2;
+  }
+
+  .plip-raindrop {
+    stroke: #8fa9c9;
+    stroke-width: 2.4;
+    stroke-linecap: round;
+    animation: plip-raindrop-fall 1.6s ease-in infinite;
+  }
+
+  .plip-raindrop-2 {
+    animation-delay: 0.5s;
+  }
+
+  .plip-dirt ellipse {
+    fill: #8a6a49;
+    opacity: 0.6;
+  }
+
+  .plip-zzz-char {
+    font: 700 1rem/1 ui-rounded, system-ui, sans-serif;
+    fill: var(--color-muted);
+  }
+
+  .plip-zzz-solo {
+    font-size: 0.75rem;
+    opacity: 0.7;
+    animation: plip-zzz-float 2.6s ease-in infinite;
+  }
+
+  .plip-reaction {
+    opacity: 0;
+  }
+
+  .plip-reaction-feed circle {
+    fill: #c98a4b;
+  }
+
+  .plip-reaction-play path {
+    fill: #ffcf6b;
+  }
+
+  .plip-reaction-walk path {
+    fill: none;
+    stroke: var(--color-accent-ink, #b84b22);
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    opacity: 0.6;
+  }
+
+  .plip-reaction-clean .plip-bubble {
+    fill: #dff3fb;
+    stroke: #bfe3f2;
+    stroke-width: 1;
+  }
+
+  .plip-reaction-clean path:not(.plip-bubble) {
+    fill: #fff6d8;
+  }
+
+  .plip-reaction-adventure .plip-mud {
+    fill: #8a6a49;
+    opacity: 0.75;
+  }
+
+  .plip-visual[data-reaction="feed"] .plip-reaction-feed,
+  .plip-visual[data-reaction="play"] .plip-reaction-play,
+  .plip-visual[data-reaction="walk"] .plip-reaction-walk,
+  .plip-visual[data-reaction="clean"] .plip-reaction-clean,
+  .plip-visual[data-reaction="adventure"] .plip-reaction-adventure {
+    animation: plip-reaction-mark 1.4s ease-out;
+  }
+
+  .plip-visual[data-reaction="feed"] .plip-cheek {
+    animation: plip-cheek-puff 1.4s ease-out;
+  }
+
+  @keyframes plip-reaction-mark {
+    0% {
+      opacity: 0;
+    }
+    15% {
+      opacity: 1;
+    }
+    75% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+
+  @keyframes plip-cheek-puff {
+    0%,
+    100% {
+      transform: scale(1);
+    }
+    30% {
+      transform: scale(1.22);
+    }
+  }
+
+  @keyframes plip-bounce {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    25% {
+      transform: translateY(-6px);
+    }
+    50% {
+      transform: translateY(0);
+    }
+    70% {
+      transform: translateY(-3px);
+    }
+  }
+
+  @keyframes plip-settle {
+    0% {
+      transform: scale(1);
+    }
+    40% {
+      transform: scale(0.94);
+    }
+    70% {
+      transform: scale(1.03);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+
+  .plip-visual:not(.plip-sleeping) .plip-svg {
+    animation: plip-breathe 3.6s ease-in-out infinite;
+    transform-origin: 50% 85%;
+  }
+
+  .plip-visual.plip-sleeping .plip-svg {
+    animation: plip-breathe-slow 4.8s ease-in-out infinite;
+    transform-origin: 50% 85%;
+  }
+
+  /* Same ordering requirement as Milo.astro's own comment explains: these
+     must come AFTER the idle-loop rules, since `animation` is a
+     non-additive shorthand and both pairs match .plip-svg with equal
+     specificity. */
+  .plip-visual[data-reaction="play"] .plip-svg {
+    animation: plip-breathe 3.6s ease-in-out infinite, plip-bounce 700ms ease-in-out 1;
+  }
+
+  .plip-visual[data-reaction="sleep"] .plip-svg {
+    animation: plip-breathe-slow 4.8s ease-in-out infinite, plip-settle 900ms ease-out 1;
+  }
+
+  .plip-visual {
+    animation: plip-pop 320ms ease-out;
+  }
+
+  @keyframes plip-pop {
+    from {
+      transform: scale(0.92);
+      opacity: 0;
+    }
+    to {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  @keyframes plip-breathe {
+    0%,
+    100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.025);
+    }
+  }
+
+  @keyframes plip-breathe-slow {
+    0%,
+    100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.015);
+    }
+  }
+
+  .plip-zzz-1 {
+    animation: plip-zzz-float 2.4s ease-in 0s infinite;
+  }
+  .plip-zzz-2 {
+    animation: plip-zzz-float 2.4s ease-in 0.5s infinite;
+  }
+  .plip-zzz-3 {
+    animation: plip-zzz-float 2.4s ease-in 1s infinite;
+  }
+
+  @keyframes plip-zzz-float {
+    0% {
+      opacity: 0;
+      transform: translate(0, 0);
+    }
+    15% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+      transform: translate(6px, -16px);
+    }
+  }
+
+  @keyframes plip-raindrop-fall {
+    0% {
+      opacity: 0;
+      transform: translateY(0);
+    }
+    20% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+      transform: translateY(7px);
+    }
+  }
+</style>

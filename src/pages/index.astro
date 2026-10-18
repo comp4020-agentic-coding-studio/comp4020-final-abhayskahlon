@@ -2,10 +2,11 @@
 import ActionIcon from "../components/ActionIcon.astro";
 import { formatMiloAge } from "../components/age";
 import { pickDialogue } from "../components/dialogue";
+import CreatureDisplay from "../components/CreatureDisplay.astro";
 import Milo from "../components/Milo.astro";
 import StatIcon from "../components/StatIcon.astro";
 import { getLatestPatch } from "../lib/changelog";
-import { ACCESSORIES, ACTIONS, APPEARANCE_LABELS, type AccessorySlot, type ActionName } from "../lib/creature";
+import { ACCESSORIES, ACTIONS, APPEARANCE_LABELS, APPEARANCES, type AccessorySlot, type ActionName } from "../lib/creature";
 import { defaultCreatureStats, getCreatureState, getSessionRoom } from "../lib/db";
 import { DISPLAY_NAME_MAX_LENGTH, ROOM_CODE_LENGTH } from "../lib/room";
 import { getOrCreateSession } from "../lib/session";
@@ -57,10 +58,15 @@ const state = room ? getCreatureState(room.id) : null;
 const age = state && room ? formatMiloAge(room.createdAt) : null;
 const dialogue = state ? pickDialogue(state.stats, state.activity, state.history[0]?.createdAt ?? null) : null;
 
-// A single, fixed name — not a naming feature. There is nowhere in this
-// app a visitor can set or change it; it's a literal here and in the
-// client script below, same as any other fixed copy.
-const CREATURE_NAME = "Milo";
+// The display name for whichever of the five fixed, authored appearances
+// is currently selected (PROCESS.md, Decision 15) — still not a naming
+// feature: a visitor picks one of five server-validated looks, the same
+// shared, cosmetic mechanism wardrobe already uses, never free text. On
+// the entry branch (no room yet), this stays "Milo" — the default
+// appearance a brand-new room actually starts as (see welcomeStats above).
+// The client script below reads this same value off a data attribute
+// rather than keeping its own separate copy, so the two can never drift.
+const CREATURE_NAME = state ? APPEARANCE_LABELS[state.appearance] : "Milo";
 
 const STAT_LABELS: Record<"hunger" | "energy" | "happiness" | "cleanliness", string> = {
   hunger: "Fullness",
@@ -309,8 +315,15 @@ const activityPhrase =
           <>
             <h1>COMMONS</h1>
             <p class="intro">
-              Everyone in room <strong>{room.id}</strong> is looking after {CREATURE_NAME} — one shared creature, not
-              your own pet. <a href="/?switch=1">Switch room</a>
+              Everyone in room <strong>{room.id}</strong> is looking after one shared creature — not your own pet.
+              {/* Deliberately not the appearance-specific name here: this
+                  paragraph sits outside #live-state (unchanged by
+                  refreshLiveState()'s swap), so it would show a stale
+                  appearance after a switch until the next full page load —
+                  the same reason actions-panel's heading below stays
+                  generic too. */}
+              {" "}
+              <a href="/?switch=1">Switch room</a>
             </p>
             <p class="live-indicator" id="live-indicator">
               connecting…
@@ -325,7 +338,37 @@ const activityPhrase =
                 {age?.milestone && <p class="milo-milestone">{age.milestone}</p>}
                 {room.hostLabel && <p class="panel-note">Hosted by {room.hostLabel}</p>}
 
-                <Milo activity={state.activity} stats={state.stats} hat={state.hat} neckwear={state.neckwear} />
+                <CreatureDisplay
+                  appearance={state.appearance}
+                  activity={state.activity}
+                  stats={state.stats}
+                  hat={state.hat}
+                  neckwear={state.neckwear}
+                  glasses={state.glasses}
+                />
+
+                {/* One shared creature, five looks (PROCESS.md, Decision
+                    15) — a cosmetic picker, not five separate pets: every
+                    visitor in the room sees the same selection, and
+                    switching never touches stats/xp/history. Each form
+                    carries exactly one appearance id, the same one-value-
+                    per-form shape every other mutating form on this page
+                    already uses. */}
+                <div class="appearance-picker" role="group" aria-label="Appearance">
+                  {
+                    APPEARANCES.map((id) => (
+                      <form method="post" action="/api/appearance" class="activity-form appearance-form">
+                        <input type="hidden" name="appearance" value={id} />
+                        <button
+                          aria-pressed={state.appearance === id}
+                          class:list={["appearance-option", { selected: state.appearance === id }]}
+                        >
+                          {APPEARANCE_LABELS[id]}
+                        </button>
+                      </form>
+                    ))
+                  }
+                </div>
 
                 <p class="milo-dialogue">"{dialogue}"</p>
 
@@ -333,6 +376,7 @@ const activityPhrase =
                   class={`activity-badge ${state.activity}`}
                   id="activity-badge"
                   data-activity-until={state.activityUntil ?? ""}
+                  data-creature-name={CREATURE_NAME}
                 >
                   {activityPhrase}
                 </span>
@@ -537,7 +581,7 @@ const activityPhrase =
                  state, so there's nothing for them to go stale showing — they
                  never need to be part of the live-refreshed region. -->
             <section class="panel actions-panel" aria-labelledby="actions-heading">
-              <h2 id="actions-heading">Care for {CREATURE_NAME}</h2>
+              <h2 id="actions-heading">Care for your creature</h2>
               <div class="actions">
                 {
                   ACTIONS.map((action) => (
@@ -769,18 +813,22 @@ const activityPhrase =
       // state.activity / state.lastAction, never invented here) is what
       // this only ever adds a live countdown on top of. A no-op on the
       // entry page, where #activity-badge doesn't exist.
-      const CREATURE_NAME = "Milo"; // the same fixed name as the frontmatter above, not a shared config — see there
       let countdownInterval: ReturnType<typeof setInterval> | undefined;
       function attachActivityCountdown() {
         clearInterval(countdownInterval);
         const badge = document.getElementById("activity-badge");
         const until = badge?.dataset.activityUntil;
+        // Read the creature's current display name off the badge's own
+        // data attribute — set server-side from `state.appearance`
+        // (src/lib/creature.ts's APPEARANCE_LABELS) — rather than a second,
+        // hardcoded copy here that could drift from whichever of the five
+        // appearances is actually selected.
+        const name = badge?.dataset.creatureName ?? "Milo";
         if (!badge || !until) return;
         const deadline = new Date(until).getTime();
         const tick = () => {
           const remaining = Math.max(0, Math.round((deadline - Date.now()) / 1000));
-          badge.textContent =
-            remaining > 0 ? `${CREATURE_NAME} is sleeping — ${remaining}s` : `${CREATURE_NAME} is waking up…`;
+          badge.textContent = remaining > 0 ? `${name} is sleeping — ${remaining}s` : `${name} is waking up…`;
           if (remaining <= 0) clearInterval(countdownInterval);
         };
         tick();

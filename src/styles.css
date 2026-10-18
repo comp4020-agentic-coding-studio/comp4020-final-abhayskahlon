@@ -198,11 +198,12 @@ main :where(pre code) {
     align-items: start;
   }
 
-  /* .entry-page is .app-main's ONLY child on the entry route (never present
-     alongside the room view's h1/.intro/panels) — it just needs to span the
-     full grid width rather than get squeezed into a single 1fr column, so
-     its own internal flex-centering (below) has the whole viewport width to
-     center within, exactly like the room view's own full-width rows. */
+  /* .entry-page is .app-main's ONLY child on the entry route (never
+     present alongside the room view's h1/.intro/panels) — it just needs to
+     span the full grid width rather than get squeezed into a single 1fr
+     column, so its own internal layout (its own, separate 64rem
+     breakpoint) has the whole viewport width to lay out within, exactly
+     like the room view's own full-width rows. */
   .app-main > .entry-page {
     grid-column: 1 / -1;
   }
@@ -319,94 +320,145 @@ main :where(pre code) {
   text-align: left;
 }
 
-/* ---------- entry page: centered, with a decorative "live" background ----
+/* ---------- entry page: a welcome column + an entry column, then devnotes
    A dedicated wrapper (index.astro) for the entry route only — the room
    view's own .app-main grid rules above are completely untouched by any of
-   this; .entry-page only ever exists on the page shape the entry branch
-   renders. Centers .entry-panel on BOTH axes, unlike the plain top-of-page
-   flow every other panel on this site uses, since this is the one screen
-   with nothing else competing for vertical space. */
+   this; .entry-page/.entry-shell only ever exist on the page shape the
+   entry branch renders.
+
+   .entry-page is the outer, always-vertical stack: .entry-shell (the
+   welcome+entry pair) followed by .entry-devnotes as a SIBLING, never a
+   child of .entry-shell's own flex row — a third flex item there would
+   compete for row space alongside the two real columns instead of sitting
+   full-width beneath them.
+
+   .entry-shell itself: mobile stacks welcome above entry (the deliberate
+   order index.astro's markup already puts them in); a dedicated
+   breakpoint (64rem — deliberately NOT .app-main's own 46rem/72rem
+   room-view breakpoints, which size four room-view panels, not a
+   two-column welcome+entry composition) switches it to a side-by-side
+   row. */
 .entry-page {
-  position: relative;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  /* Subtracts the fixed header's own height (padding + line-height) so the
-     card centers in the space actually left below it, not the full
-     viewport — 100dvh over 100vh to avoid mobile browsers' address-bar
-     resize making the card visibly jump as it shows/hides. */
-  min-height: calc(100dvh - 3.5rem);
-  padding: var(--space-6) var(--space-4);
-  overflow: hidden; /* .entry-bg's oversized silhouette never causes scroll */
+  flex-direction: column;
+  gap: var(--space-6);
+  padding: var(--space-6) 0;
 }
 
-/* A single, large, very faint decorative silhouette — reusing Milo's own
-   established body shape (the same base path Milo.astro draws, simplified
-   to one path with no face/mood/wardrobe) rather than inventing new
-   decoration or pulling in an external image. Purely ambient: aria-hidden,
-   pointer-events: none, never competes with or obscures the actual card. */
-.entry-bg {
-  position: absolute;
-  inset: -10% -10% -10% auto;
-  right: -8%;
-  width: min(60rem, 140vw);
-  aspect-ratio: 1;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 160'%3E%3Cpath fill='%23ff8a5b' d='M44 150c-6 0-9-9-6-20-10-4-17-13-17-26 0-10 5-18 12-23-4-8-5-18-1-27 5-11 16-18 28-18 4-9 13-15 23-15s19 6 23 15c12 0 23 7 28 18 4 9 3 19-1 27 7 5 12 13 12 23 0 13-7 22-17 26 3 11 0 20-6 20-5 0-9-5-11-12a46 46 0 0 1-57 0c-2 7-6 12-11 12z'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: contain;
-  opacity: 0.07;
-  /* Slow, gentle drift — the one "live" touch this page gets, entirely
-     CSS-driven (no JS, no canvas/particle library). Fully neutralised by
-     the universal prefers-reduced-motion override at the bottom of this
-     file, same as every other animation on this site. */
-  animation: entry-bg-drift 36s ease-in-out infinite alternate;
-  pointer-events: none;
+.entry-shell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
 }
 
-@keyframes entry-bg-drift {
-  from {
-    transform: translate(0, 0) rotate(0deg);
+@media (min-width: 64rem) {
+  .entry-shell {
+    flex-direction: row;
+    align-items: flex-start;
   }
-  to {
-    transform: translate(-3%, 2%) rotate(-2deg);
-  }
-}
 
-/* Wider than the generic .panel default on larger screens — a deliberate,
-   generously-sized centerpiece now that it's the sole focus of the page,
-   not a leftover narrow column inherited from the room view's content
-   width. Still capped, never full-bleed: a stretched form reads worse, not
-   better. */
-.entry-panel {
-  position: relative; /* sits above .entry-bg, which is position: absolute */
-  width: min(32rem, 100%);
-  margin: 0;
-}
-
-@media (min-width: 46rem) {
+  .entry-welcome,
   .entry-panel {
-    width: min(36rem, 100%);
+    flex: 1 1 0;
+    min-width: 0;
   }
 }
 
-/* The one-line "what's new" pointer — a footnote, not a feature: smaller
-   than .intro, no card/border/background of its own, so it never competes
-   with the two actual room-choice cards below it for attention. */
-.entry-patch-note {
-  margin: var(--space-4) 0 0;
-  font-size: 0.8rem;
-  color: var(--color-muted);
+/* ---------- welcome column: identity, the real Milo, what this is ------ */
+
+.entry-welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   text-align: center;
+  padding: 0 var(--space-4);
 }
 
-.entry-patch-note a {
+@media (min-width: 64rem) {
+  .entry-welcome {
+    align-items: flex-start;
+    text-align: left;
+    padding: var(--space-4) 0;
+  }
+}
+
+/* The real <Milo> component (index.astro), scaled up from its normal
+   in-room size (Milo.astro's own scoped .milo-visual clamp tops out at
+   10.5rem, sized for sitting inside a compact stat card) into a genuine
+   illustration-sized visual anchor — the whole point of this redesign is
+   that this is recognisably Milo, not a vague abstract shape. `transform:
+   scale()` on the inline SVG stays crisp at any size (no raster blur). */
+.entry-illustration {
+  margin: var(--space-4) 0;
+}
+
+/* Milo.astro's own `.milo-visual` rule is Astro-scoped (compiles with a
+   higher-specificity scoping attribute selector attached) — `:global()`
+   only has meaning inside an Astro component's own <style> block, not in
+   this plain, already-global stylesheet, so overriding it from here needs
+   a selector specific enough to actually win the cascade rather than a
+   bare class. Verified by rendering: this wins. */
+.entry-illustration .milo-visual.milo-visual {
+  width: clamp(10rem, 28vw, 14rem);
+}
+
+.entry-concept-note {
   color: var(--color-muted);
-  font-weight: 600;
+  max-width: 32rem;
+  margin: 0 0 var(--space-4);
 }
 
-/* ---------- room entry: join or host ----------
-   Two sibling cards (.entry-card), not one continuous form with a divider
+/* A plain icon+label list, not buttons — these aren't live controls before
+   a room exists, just a preview of "here's what you'll do together",
+   reusing the exact same ActionIcon set the real action buttons use. */
+.entry-feature-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--color-muted);
+  font-size: 0.9rem;
+}
+
+@media (min-width: 64rem) {
+  .entry-feature-list {
+    justify-content: flex-start;
+  }
+}
+
+.entry-feature-list li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.entry-feature-list svg {
+  width: 1.1rem;
+  height: 1.1rem;
+  color: var(--color-accent-ink);
+}
+
+/* ---------- entry column: join or host ----------------------------------
+   .entry-panel itself is still a .panel (card surface/border/radius/shadow
+   from the generic rule above) — no width override needed now that it
+   shares a flex row with .entry-welcome instead of being the page's one
+   centered focal point. */
+
+.entry-panel h2 {
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  margin: 0 0 var(--space-1);
+}
+
+.entry-panel-hint {
+  color: var(--color-muted);
+  margin: 0 0 var(--space-4);
+}
+
+/* Two sibling cards (.entry-card), not one continuous form with a divider
    rule: the brief asks the two choices to read as genuinely distinct
    options rather than sections of one long form. Each card reuses the
    same surface/border/radius tokens every other panel on this page already
@@ -416,9 +468,11 @@ main :where(pre code) {
 /* Shown only when the session already has a room — the explicit
    "re-enter" affordance for a returning visitor landing on the entry page
    by default (see index.astro). A rounded banner, not a pill: a pill's
-   fixed vertical padding doesn't give wrapped text (room code + link, at
-   narrower widths) anywhere sensible to go, where a block element just
-   grows. Same surface/border/radius as every other callout on this page. */
+   fixed vertical padding doesn't give wrapped text (room code + milestone
+   + link, at narrower widths) anywhere sensible to go, where a block
+   element just grows. Same surface/border/radius as every other callout
+   on this page. Reuses .milestone-badge (the room view's own real
+   milestone pill, defined further down) rather than a second badge style. */
 .entry-returning {
   background: var(--color-surface-alt);
   border: 1px solid var(--color-border);
@@ -450,7 +504,7 @@ main :where(pre code) {
   padding: var(--space-4);
 }
 
-.entry-panel h2 {
+.entry-card h3 {
   font-family: var(--font-display);
   font-size: 1.1rem;
   margin: 0 0 var(--space-1);
@@ -548,6 +602,51 @@ main :where(pre code) {
 
 .entry-error[hidden] {
   display: none;
+}
+
+/* ---------- entry page: developer notes ---------------------------------
+   A real, full-width card (reuses .panel exactly like every other card on
+   this site) with a real heading and a real summary — genuinely
+   discoverable without hunting the footer, but still visually secondary to
+   joining/hosting: it sits below .entry-shell's two columns, never beside
+   or above them, and its own heading is sized a step down from "Welcome to
+   COMMONS"/"Enter COMMONS" above it. */
+.entry-devnotes {
+  text-align: left;
+}
+
+.entry-devnotes h2 {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  margin: 0 0 var(--space-2);
+}
+
+.entry-devnotes-title {
+  font-weight: 600;
+  margin: 0 0 var(--space-2);
+}
+
+.entry-devnotes-summary {
+  color: var(--color-muted);
+  margin: 0 0 var(--space-3);
+}
+
+/* Now a genuinely visible, coral-accented call-to-read link — not the
+   small muted footer line this used to be. The "→" is a pure CSS ::after
+   (never part of the element's real textContent), so the link's own text
+   stays exactly latestPatch.text — the same string spec/patch-notes.test.ts
+   already asserts this anchor's textContent equals exactly. */
+.entry-patch-note {
+  margin: 0;
+}
+
+.entry-patch-note a {
+  color: var(--color-accent-ink);
+  font-weight: 600;
+}
+
+.entry-patch-note a::after {
+  content: " →";
 }
 
 /* ---------- age and dialogue ---------- */

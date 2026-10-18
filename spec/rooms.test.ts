@@ -343,6 +343,26 @@ describe("entry page is the default for a bare GET /, for every visitor", () => 
     expect(isEntryPage(doc)).toBe(true);
   });
 
+  // The entry-page redesign's one new piece of real behaviour: the
+  // "continue to your room" card shows the room's REAL, current care
+  // total — never a fabricated example number — because it's safe to read
+  // (room is only non-null once getSessionRoom() has confirmed it resolves
+  // to a real room; see src/pages/index.astro's own comment on this).
+  it("the returning visitor's entry page shows the room's real, current care total — never a fabricated number", async () => {
+    const { cookie } = await hostRoom("Returning Visitor");
+
+    const before = await loadBareHome(cookie);
+    expect(before.querySelector(".entry-returning")?.textContent).toContain("0 care actions so far");
+
+    const feedRes = await post("/api/actions", cookie, new URLSearchParams({ action: "feed" }));
+    expect(feedRes.status).toBe(303);
+    const cleanRes = await post("/api/actions", cookie, new URLSearchParams({ action: "clean" }));
+    expect(cleanRes.status).toBe(303);
+
+    const after = await loadBareHome(cookie);
+    expect(after.querySelector(".entry-returning")?.textContent).toContain("2 care actions so far");
+  });
+
   it("the returning visitor's session and room membership remain valid — they can still explicitly re-enter with no new cookie and no re-hosting or re-joining", async () => {
     const { cookie, roomId } = await hostRoom("Returning Visitor");
 

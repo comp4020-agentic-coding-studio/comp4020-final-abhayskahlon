@@ -281,7 +281,15 @@ function generateUniqueRoomCode(tx: Handle): string {
 // A fresh creature starts comfortably in the middle of every need, not at
 // the extremes — there's something for a room's first visitor to improve,
 // but nothing urgent. Matches the defaults the old singleton seed used.
-function defaultCreatureStats() {
+//
+// Exported so src/pages/index.astro's entry page can render a decorative,
+// non-fabricated <Milo> illustration using the EXACT same stats a brand-new
+// room actually starts with — zero drift between "what Milo looks like
+// before anyone's joined" and "what a first visitor's room really looks
+// like the moment they host it." No database access happens from reading
+// this; it's a pure object literal, safe to call from a page that may have
+// no room at all.
+export function defaultCreatureStats() {
   return { hunger: 70, energy: 70, happiness: 70, cleanliness: 70, activity: "idle" as const, activityUntil: null };
 }
 

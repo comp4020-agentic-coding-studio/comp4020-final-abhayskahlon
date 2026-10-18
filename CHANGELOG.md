@@ -1,7 +1,19 @@
 # Patch notes
 
 What's changed, in plain terms, newest first — read live via `/patch-notes/`
-and pointed to from the entry page's one-line "what's new" note.
+and summarised on the entry page's own "what's new in COMMONS" section.
+
+## Patch 1.2 — A welcome page that actually looks like COMMONS
+
+The entry page's background used to be an abstract shape that only claimed
+to be Milo's silhouette — it wasn't. The real Milo now stands in a proper
+welcome column alongside the room-entry panel, side by side on wider
+screens and stacked in a sensible order on narrow ones. A returning
+visitor's "continue to your room" card now shows that room's real,
+current care total and milestone, not just a link back in. And "what's
+new" is no longer a tiny footer line — it's a real section with a heading
+and the latest patch's own summary, still linking through to the full
+history here.
 
 ## Patch 1.1 — Room milestones, a redesigned welcome, and patch notes
 

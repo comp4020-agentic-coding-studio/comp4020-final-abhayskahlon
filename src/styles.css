@@ -947,6 +947,25 @@ main :where(pre code) {
   font-weight: 600;
 }
 
+.wardrobe-option:disabled,
+.wardrobe-option.locked {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.wardrobe-option:disabled:hover {
+  border-color: var(--color-border);
+}
+
+.wardrobe-lock {
+  color: var(--color-muted);
+  font-size: 0.8em;
+}
+
+.wardrobe-option.selected .wardrobe-lock {
+  color: rgba(255, 255, 255, 0.85);
+}
+
 .adventure-form {
   margin-top: var(--space-4);
 }

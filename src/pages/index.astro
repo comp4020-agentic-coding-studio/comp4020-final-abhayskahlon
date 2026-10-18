@@ -5,7 +5,7 @@ import { pickDialogue } from "../components/dialogue";
 import Milo from "../components/Milo.astro";
 import StatIcon from "../components/StatIcon.astro";
 import { getLatestPatch } from "../lib/changelog";
-import { ACTIONS, type ActionName, WARDROBE_HATS, WARDROBE_LABELS, WARDROBE_NECKWEAR } from "../lib/creature";
+import { ACCESSORIES, ACTIONS, type AccessorySlot, type ActionName } from "../lib/creature";
 import { defaultCreatureStats, getCreatureState, getSessionRoom } from "../lib/db";
 import { DISPLAY_NAME_MAX_LENGTH, ROOM_CODE_LENGTH } from "../lib/room";
 import { getOrCreateSession } from "../lib/session";
@@ -428,67 +428,60 @@ const activityPhrase =
                   everyone in this room, the same as everything else {CREATURE_NAME} does.
                 </p>
 
-                {/* Each form carries exactly ONE slot + ONE value, never the
-                    other slot's current value — the server reads that fresh
-                    inside its own transaction (src/lib/db.ts's
-                    performWardrobeChange) precisely so a hat choice can never
-                    silently revert a scarf someone else just picked, no matter
-                    how stale this rendered page is. */}
-                <p class="wardrobe-slot-label">Hat</p>
-                <div class="wardrobe-options" role="group" aria-label="Hat">
-                  <form method="post" action="/api/wardrobe" class="activity-form wardrobe-form">
-                    <input type="hidden" name="slot" value="hat" />
-                    <input type="hidden" name="value" value="" />
-                    <button
-                      aria-pressed={state.hat === null}
-                      class:list={["wardrobe-option", { selected: state.hat === null }]}
-                    >
-                      None
-                    </button>
-                  </form>
-                  {
-                    WARDROBE_HATS.map((option) => (
-                      <form method="post" action="/api/wardrobe" class="activity-form wardrobe-form">
-                        <input type="hidden" name="slot" value="hat" />
-                        <input type="hidden" name="value" value={option} />
-                        <button
-                          aria-pressed={state.hat === option}
-                          class:list={["wardrobe-option", { selected: state.hat === option }]}
-                        >
-                          {WARDROBE_LABELS[option]}
-                        </button>
-                      </form>
-                    ))
-                  }
-                </div>
+                {/* Each form carries exactly ONE slot + ONE value, never any
+                    other slot's current value — the server reads every
+                    untouched slot fresh inside its own transaction
+                    (src/lib/db.ts's performWardrobeChange) precisely so a hat
+                    choice can never silently revert a scarf someone else just
+                    picked, no matter how stale this rendered page is.
 
-                <p class="wardrobe-slot-label">Neckwear</p>
-                <div class="wardrobe-options" role="group" aria-label="Neckwear">
-                  <form method="post" action="/api/wardrobe" class="activity-form wardrobe-form">
-                    <input type="hidden" name="slot" value="neckwear" />
-                    <input type="hidden" name="value" value="" />
-                    <button
-                      aria-pressed={state.neckwear === null}
-                      class:list={["wardrobe-option", { selected: state.neckwear === null }]}
-                    >
-                      None
-                    </button>
-                  </form>
-                  {
-                    WARDROBE_NECKWEAR.map((option) => (
-                      <form method="post" action="/api/wardrobe" class="activity-form wardrobe-form">
-                        <input type="hidden" name="slot" value="neckwear" />
-                        <input type="hidden" name="value" value={option} />
-                        <button
-                          aria-pressed={state.neckwear === option}
-                          class:list={["wardrobe-option", { selected: state.neckwear === option }]}
-                        >
-                          {WARDROBE_LABELS[option]}
-                        </button>
-                      </form>
-                    ))
-                  }
-                </div>
+                    Whether an item is currently EQUIPPABLE depends on the
+                    room's shared level and current appearance (PROCESS.md,
+                    Decision 16) — locked items stay visible with their
+                    requirement rather than disappearing, and their button is
+                    `disabled` so a locked item can never even be submitted;
+                    the server's own check inside the transaction is the real
+                    authority, this is defense in depth, not the only guard. */}
+                {
+                  (["hat", "glasses", "neckwear"] as AccessorySlot[]).map((slot) => {
+                    const current = slot === "hat" ? state.hat : slot === "glasses" ? state.glasses : state.neckwear;
+                    const options = ACCESSORIES.filter(
+                      (item) => item.slot === slot && (item.compatible === "all" || item.compatible.includes(state.appearance)),
+                    );
+                    const slotLabel = slot === "hat" ? "Hat" : slot === "glasses" ? "Glasses" : "Neckwear";
+                    return (
+                      <Fragment>
+                        <p class="wardrobe-slot-label">{slotLabel}</p>
+                        <div class="wardrobe-options" role="group" aria-label={slotLabel}>
+                          <form method="post" action="/api/wardrobe" class="activity-form wardrobe-form">
+                            <input type="hidden" name="slot" value={slot} />
+                            <input type="hidden" name="value" value="" />
+                            <button aria-pressed={current === null} class:list={["wardrobe-option", { selected: current === null }]}>
+                              None
+                            </button>
+                          </form>
+                          {options.map((item) => {
+                            const locked = item.unlockLevel > state.progression.level;
+                            return (
+                              <form method="post" action="/api/wardrobe" class="activity-form wardrobe-form">
+                                <input type="hidden" name="slot" value={slot} />
+                                <input type="hidden" name="value" value={item.id} />
+                                <button
+                                  aria-pressed={current === item.id}
+                                  disabled={locked}
+                                  class:list={["wardrobe-option", { selected: current === item.id, locked }]}
+                                >
+                                  {item.label}
+                                  {locked && <span class="wardrobe-lock"> — Level {item.unlockLevel}</span>}
+                                </button>
+                              </form>
+                            );
+                          })}
+                        </div>
+                      </Fragment>
+                    );
+                  })
+                }
 
                 <form method="post" action="/api/adventure" class="activity-form adventure-form">
                   {/* Not read by /api/adventure.ts (that route takes no action name

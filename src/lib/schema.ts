@@ -83,6 +83,27 @@ export const creature = sqliteTable("creature", {
   // authored vocabulary each one is validated against.
   hat: text(),
   neckwear: text(),
+  glasses: text(),
+  // Which of the five fixed, authored looks this room's one shared
+  // creature currently appears as (PROCESS.md, Decision 15) — exactly the
+  // same kind of shared, cosmetic, server-validated field as hat/neckwear/
+  // glasses above, NOT a second creature and NOT a per-visitor choice:
+  // every visitor in the room sees the same appearance, switching it
+  // changes only which component renders, and it never touches stats, xp,
+  // totalCareActions, or history. Still "exactly one creature, shared" —
+  // CLAUDE.md's "don't add a second creature" rule is about identity, not
+  // which SVG that one identity is drawn with.
+  appearance: text().notNull().default("milo"),
+  // Cumulative, authoritative, NEVER decremented and never itself capped —
+  // only the *derived* level (src/lib/creature.ts getProgression(), never
+  // a stored column) clamps at the level cap, the same "derive it, don't
+  // duplicate it" precedent deriveHealth() already set for `health` never
+  // getting a column of its own. A second, additive progress axis
+  // alongside the existing room-level totalCareActions/milestones above —
+  // not a replacement for it (PROCESS.md, Decision 16). Awarded only for
+  // genuine successful actions, never for a rejection or a cosmetic
+  // wardrobe/appearance change, matching totalCareActions' own rule.
+  xp: int().notNull().default(0),
   // A lifetime, never-pruned counter — the one deliberate exception to
   // Decision 8's "bounded, not unbounded" pattern for this room's history.
   // `care_events`/`log_events` are both capped and pruned on insert, so
@@ -141,6 +162,12 @@ export const careEvents = sqliteTable("care_events", {
   roomId: text("room_id").references(() => rooms.id),
   action: text().notNull(),
   summary: text().notNull(),
+  // Which appearance was active when this action happened, captured at
+  // action-event time — the same "capture now, independent of what
+  // changes later" rule roomId above already follows. Existing rows from
+  // before this column existed correctly default to "milo", since that
+  // was the only appearance that has ever existed until Decision 15.
+  appearance: text().notNull().default("milo"),
   createdAt: text("created_at")
     .notNull()
     .default(sql`(datetime('now'))`),

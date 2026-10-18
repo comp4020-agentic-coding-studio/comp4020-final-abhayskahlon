@@ -5,17 +5,22 @@ import { and, desc, eq, notInArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import {
+  type AccessorySlot,
   type ActionName,
   type Activity,
-  type HatOption,
+  type AppearanceId,
   type MilestoneInfo,
-  type NeckwearOption,
+  type Progression,
   type Stats,
+  APPEARANCE_LABELS,
+  XP_PER_ACTION,
   applyAction,
   applyAdventure,
   describeWardrobe,
   deriveHealth,
+  findAccessory,
   getMilestone,
+  getProgression,
   resolveActivity,
 } from "./creature";
 import { actorTag, logCareEvent, logRoomEvent } from "./log";
@@ -343,6 +348,11 @@ export interface CareHistoryEntry {
   summary: string;
   actorLabel: string;
   createdAt: string;
+  // The appearance active at the moment this action happened — captured in
+  // the same transaction that wrote the row (schema.ts, care_events.appearance),
+  // never the room's CURRENT appearance, so history stays accurate even
+  // after a later switch. See PROCESS.md, Decision 15.
+  appearance: AppearanceId;
 }
 
 export interface CreatureState {
@@ -354,8 +364,12 @@ export interface CreatureState {
   lastActorLabel: string | null;
   updatedAt: string;
   history: CareHistoryEntry[];
-  hat: HatOption | null;
-  neckwear: NeckwearOption | null;
+  hat: string | null;
+  neckwear: string | null;
+  glasses: string | null;
+  // Which of the five fixed looks this room's one shared creature currently
+  // renders as — shared, cosmetic, never per-visitor. PROCESS.md, Decision 15.
+  appearance: AppearanceId;
   // PROCESS.md, Decision 14 — the room's own lifetime total and its derived
   // milestone progress, never a per-visitor figure. Computed fresh from
   // `creature.totalCareActions` on every read (toState, below), the same
@@ -366,6 +380,11 @@ export interface CreatureState {
   // (Decision 5), with no new real-time payload.
   totalCareActions: number;
   milestone: MilestoneInfo;
+  // PROCESS.md, Decision 16 — a second, independent shared progress track:
+  // `level` is always derived from `creature.xp` (getProgression, never a
+  // stored column, same "derive it, don't duplicate it" rule `health`
+  // already follows), computed fresh on every read.
+  progression: Progression;
 }
 
 function listRecentCareHistory(handle: Handle, roomId: string, limit: number): CareHistoryEntry[] {
@@ -375,13 +394,14 @@ function listRecentCareHistory(handle: Handle, roomId: string, limit: number): C
       summary: careEvents.summary,
       actorLabel: sessions.label,
       createdAt: careEvents.createdAt,
+      appearance: careEvents.appearance,
     })
     .from(careEvents)
     .innerJoin(sessions, eq(careEvents.sessionId, sessions.id))
     .where(eq(careEvents.roomId, roomId))
     .orderBy(desc(careEvents.id))
     .limit(limit)
-    .all();
+    .all() as CareHistoryEntry[];
 }
 
 // The ONE place a lazily-expired sleep gets resolved — used by both the
@@ -437,13 +457,17 @@ function toState(handle: Handle, row: Creature, roomId: string): CreatureState {
     updatedAt: resolvedRow.updatedAt,
     history: listRecentCareHistory(handle, roomId, CARE_HISTORY_DISPLAY),
     // Stored as plain `text` (nullable) in schema.ts; the vocabulary that
-    // makes these HatOption/NeckwearOption is only ever written through
-    // performWardrobeChange()'s validation below, so a cast here is safe —
-    // the column can never hold anything outside that vocabulary in practice.
-    hat: resolvedRow.hat as HatOption | null,
-    neckwear: resolvedRow.neckwear as NeckwearOption | null,
+    // makes these valid accessory ids is only ever written through
+    // performWardrobeChange()'s validation below, so reading them back here
+    // is safe — the column can never hold anything outside that vocabulary
+    // in practice.
+    hat: resolvedRow.hat,
+    neckwear: resolvedRow.neckwear,
+    glasses: resolvedRow.glasses,
+    appearance: resolvedRow.appearance as AppearanceId,
     totalCareActions: resolvedRow.totalCareActions,
     milestone: getMilestone(resolvedRow.totalCareActions),
+    progression: getProgression(resolvedRow.xp),
   };
 }
 
@@ -529,11 +553,16 @@ export function performAction(action: ActionName, session: Session, roomId: stri
         // number, so it can never race with another concurrent transaction
         // touching the same row (Decision 4).
         totalCareActions: sql`${creature.totalCareActions} + 1`,
+        // PROCESS.md, Decision 16 — same guard, same plain-SQL-increment
+        // concurrency safety as totalCareActions directly above.
+        xp: sql`${creature.xp} + ${XP_PER_ACTION}`,
       })
       .where(eq(creature.id, row.id))
       .run();
 
-    tx.insert(careEvents).values({ sessionId: session.id, roomId, action, summary: outcome.result.summary }).run();
+    tx.insert(careEvents)
+      .values({ sessionId: session.id, roomId, action, summary: outcome.result.summary, appearance: row.appearance })
+      .run();
     pruneCareHistory(tx, roomId);
 
     return toState(tx, readRow(tx, roomId), roomId);
@@ -569,48 +598,69 @@ export function performAction(action: ActionName, session: Session, roomId: stri
   return result;
 }
 
-export type WardrobeSlot = "hat" | "neckwear";
+export type WardrobeSlot = AccessorySlot;
 
 // Same transactional shape as performAction (one db.transaction, no await
-// inside), but never rejects: a wardrobe change is cosmetic, touches no
-// stat, and is allowed even while asleep — there's no rule for it to break.
-// Still goes through a transaction and still writes one care_events row,
-// because "shared, attributed, visible in Recent care" is the whole point
-// (CLAUDE.md, Decision 6), not just a bonus for the five care actions.
+// inside). Unlike performAction, a wardrobe change was always cosmetic and
+// never gated by a stat/activity rule — but since PROCESS.md Decision 16,
+// it CAN still be rejected on a different axis: whether the room's shared
+// level has unlocked this item, and whether this item's artwork supports
+// the room's current appearance. Both checks need the row's live
+// xp/appearance, which is exactly why they happen here, inside the
+// transaction, rather than in the API route before any DB read — the same
+// "always derive from a fresh read inside the transaction" principle
+// performAction already follows for stats (PROCESS.md, Decision 4).
+// Equipping is still always allowed while asleep and never touches a stat
+// or totalCareActions/xp (Decision 14's reasoning for why wardrobe doesn't
+// count toward milestones applies identically to levels: counting it would
+// make progress trivially farmable with no real cost).
 //
-// Takes ONE slot and its new value — never both slots at once — and reads
-// the CURRENT row for whichever slot isn't being touched, inside this same
-// transaction. This is the fix for a real lost-update bug found in review:
-// the original version took a full {hat, neckwear} pair from the client,
-// which included whatever value that client's page happened to show for
-// the slot it *wasn't* changing — correct only as long as nothing else had
-// changed that slot since that page was rendered. Two sessions changing
-// different slots in quick succession (or even one session acting on a
-// page it loaded a while ago) could silently revert the other session's
-// choice. Reading the untouched slot fresh, inside the same transaction
-// that writes the touched one, makes that impossible regardless of how
-// stale either client's rendered page is — the same "always derive from a
-// fresh read inside the transaction" principle performAction already
-// follows for stats (PROCESS.md, Decision 4), just not followed here
-// originally.
-export function performWardrobeChange(slot: WardrobeSlot, value: string | null, session: Session, roomId: string): CreatureState {
+// Takes ONE slot and its new value — never all three at once — and reads
+// the CURRENT row for whichever slots aren't being touched, inside this
+// same transaction. This is the fix for a real lost-update bug found in
+// review: an earlier version took a full slot set from the client,
+// including whatever value that client's page happened to show for a slot
+// it *wasn't* changing — correct only as long as nothing else had changed
+// that slot since that page was rendered. Reading every untouched slot
+// fresh, inside the same transaction that writes the touched one, makes
+// that impossible regardless of how stale either client's rendered page is.
+export function performWardrobeChange(
+  slot: WardrobeSlot,
+  value: string | null,
+  session: Session,
+  roomId: string,
+): CreatureState | ActionRejection {
   const result = db.transaction((tx) => {
     const row = readRow(tx, roomId);
-    // `value` is validated against the right vocabulary for `slot` by the
-    // caller (api/wardrobe.ts's isHatOption/isNeckwearOption) before this
-    // ever runs — the casts here just reflect that already-checked fact,
-    // not a new assumption.
-    const hat = slot === "hat" ? (value as HatOption | null) : ((row.hat as HatOption | null) ?? null);
-    const neckwear = slot === "neckwear" ? (value as NeckwearOption | null) : ((row.neckwear as NeckwearOption | null) ?? null);
 
-    // Deliberately no `totalCareActions` increment here (PROCESS.md,
-    // Decision 14) — unlike every other write to `creature`, a wardrobe
-    // change is cosmetic, free, and never gated by any rule, so counting
-    // it toward the room's milestone total would make that total trivially
-    // farmable by flipping a hat on and off with no real cost or effort.
+    if (value !== null) {
+      const item = findAccessory(value);
+      // Shape (right slot, known id) is already checked by the caller
+      // (api/wardrobe.ts) before this ever runs — these two checks are the
+      // ones that need the row's LIVE state, so they can only live here.
+      const level = getProgression(row.xp).level;
+      if (item && item.unlockLevel > level) {
+        return { reason: `${item.label} unlocks at level ${item.unlockLevel}` };
+      }
+      if (item && item.compatible !== "all" && !item.compatible.includes(row.appearance as AppearanceId)) {
+        return { reason: `${item.label} isn't available for this appearance` };
+      }
+    }
+
+    const hat = slot === "hat" ? value : (row.hat ?? null);
+    const glasses = slot === "glasses" ? value : (row.glasses ?? null);
+    const neckwear = slot === "neckwear" ? value : (row.neckwear ?? null);
+
+    // Deliberately no `totalCareActions`/`xp` increment here (PROCESS.md,
+    // Decisions 14 and 16) — unlike every other write to `creature`, a
+    // wardrobe change is cosmetic, free, and never gated by a stat rule, so
+    // counting it toward either shared progress track would make that
+    // track trivially farmable by flipping an item on and off with no real
+    // cost or effort.
     tx.update(creature)
       .set({
         hat,
+        glasses,
         neckwear,
         lastAction: "wardrobe",
         lastActorSessionId: session.id,
@@ -620,15 +670,66 @@ export function performWardrobeChange(slot: WardrobeSlot, value: string | null, 
       .run();
 
     tx.insert(careEvents)
-      .values({ sessionId: session.id, roomId, action: "wardrobe", summary: describeWardrobe(hat, neckwear) })
+      .values({
+        sessionId: session.id,
+        roomId,
+        action: "wardrobe",
+        summary: describeWardrobe(hat, neckwear, glasses),
+        appearance: row.appearance,
+      })
       .run();
     pruneCareHistory(tx, roomId);
 
     return toState(tx, readRow(tx, roomId), roomId);
   });
 
-  logCareEvent({ roomId, sessionId: session.id, sessionLabel: session.label, action: "wardrobe", outcome: "success" });
-  safeWriteLogEvent(roomId, session.id, "care_action", "wardrobe", "success");
+  const outcome = "reason" in result ? "rejected" : "success";
+  logCareEvent({
+    roomId,
+    sessionId: session.id,
+    sessionLabel: session.label,
+    action: "wardrobe",
+    outcome,
+    ...("reason" in result ? { reason: result.reason } : {}),
+  });
+  safeWriteLogEvent(roomId, session.id, "care_action", "wardrobe", outcome, "reason" in result ? result.reason : undefined);
+  if (!("reason" in result)) broadcastUpdate(roomId);
+  return result;
+}
+
+// Same cosmetic, never-stat-gated, never-xp/milestone-counted shape as
+// performWardrobeChange — switching which of the five fixed looks the
+// room's one shared creature renders as. Never rejects beyond the static
+// shape check the caller (api/appearance.ts) already does before this
+// runs: there's no level gate on appearance itself, only on accessories
+// (PROCESS.md, Decision 15). Crucially, this writes ONLY `appearance` —
+// every stat, xp, totalCareActions, hat/neckwear/glasses, and history row
+// already in the database is completely untouched, which is the whole
+// point: switching looks is not switching creatures.
+export function performAppearanceChange(session: Session, roomId: string, appearance: AppearanceId): CreatureState {
+  const result = db.transaction((tx) => {
+    const row = readRow(tx, roomId);
+    tx.update(creature)
+      .set({ appearance, lastAction: "appearance", lastActorSessionId: session.id, updatedAt: sql`(datetime('now'))` })
+      .where(eq(creature.id, row.id))
+      .run();
+
+    tx.insert(careEvents)
+      .values({
+        sessionId: session.id,
+        roomId,
+        action: "appearance",
+        summary: `now appears as ${APPEARANCE_LABELS[appearance]}`,
+        appearance,
+      })
+      .run();
+    pruneCareHistory(tx, roomId);
+
+    return toState(tx, readRow(tx, roomId), roomId);
+  });
+
+  logCareEvent({ roomId, sessionId: session.id, sessionLabel: session.label, action: "appearance", outcome: "success" });
+  safeWriteLogEvent(roomId, session.id, "care_action", "appearance", "success");
   broadcastUpdate(roomId);
   return result;
 }
@@ -662,11 +763,16 @@ export function performAdventure(session: Session, roomId: string): CreatureStat
         // PROCESS.md, Decision 14 — same guard and reasoning as
         // performAction's identical line above: only reached on success.
         totalCareActions: sql`${creature.totalCareActions} + 1`,
+        // PROCESS.md, Decision 16 — same guard and reasoning as
+        // performAction's identical line above.
+        xp: sql`${creature.xp} + ${XP_PER_ACTION}`,
       })
       .where(eq(creature.id, row.id))
       .run();
 
-    tx.insert(careEvents).values({ sessionId: session.id, roomId, action: "adventure", summary: outcome.result.summary }).run();
+    tx.insert(careEvents)
+      .values({ sessionId: session.id, roomId, action: "adventure", summary: outcome.result.summary, appearance: row.appearance })
+      .run();
     pruneCareHistory(tx, roomId);
 
     return toState(tx, readRow(tx, roomId), roomId);

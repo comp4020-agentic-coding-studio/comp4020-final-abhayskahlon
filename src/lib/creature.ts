@@ -360,8 +360,12 @@ export const LEVEL_XP_THRESHOLDS = [0, 100, 300, 600, 1000] as const;
 export interface Progression {
   level: number; // 1..LEVEL_CAP, always derived — never its own column
   xp: number; // the raw cumulative value this was computed from
-  xpIntoLevel: number; // progress within the current level
-  xpForNextLevel: number | null; // XP needed total for the NEXT level; null at the cap
+  xpIntoLevel: number; // progress within the current level, e.g. the 150 in "150 / 300 XP"
+  // The XP WIDTH of the current level (how much it takes to complete it),
+  // e.g. the 300 in "150 / 300 XP" — null at the cap, where there's no
+  // next level to size against. Named for what the UI actually displays
+  // next to xpIntoLevel, not the cumulative threshold itself.
+  xpForLevel: number | null;
   progress: number; // 0-100 within the current level; 100 and only 100 at the cap
 }
 
@@ -378,6 +382,7 @@ export function getProgression(xp: number): Progression {
   const floor = LEVEL_XP_THRESHOLDS[level - 1];
   const nextThreshold = level < LEVEL_CAP ? LEVEL_XP_THRESHOLDS[level] : null;
   const xpIntoLevel = xp - floor;
-  const progress = nextThreshold === null ? 100 : Math.round((xpIntoLevel / (nextThreshold - floor)) * 100);
-  return { level, xp, xpIntoLevel, xpForNextLevel: nextThreshold, progress };
+  const xpForLevel = nextThreshold === null ? null : nextThreshold - floor;
+  const progress = xpForLevel === null ? 100 : Math.round((xpIntoLevel / xpForLevel) * 100);
+  return { level, xp, xpIntoLevel, xpForLevel, progress };
 }

@@ -375,6 +375,37 @@ const activityPhrase =
                   <span class="stat-bar-fill" style={`width: ${state.milestone.progress}%`} />
                 </span>
 
+                {/* A SECOND, independent shared progress track (PROCESS.md,
+                    Decision 16) — not derived from and not replacing the
+                    milestone total above. `level` is always computed fresh
+                    from `xp` (getProgression, src/lib/creature.ts), never
+                    its own stored column, the same "derive it, don't
+                    duplicate it" rule `health` already follows. Numeric XP
+                    is always shown in text, never color-only, and the
+                    progressbar carries real aria-value* attributes. */}
+                <p class="xp-progress" data-level={state.progression.level}>
+                  {state.progression.xpForLevel === null ? (
+                    <>
+                      Level <strong>{state.progression.level}</strong> · max level — <strong>{state.progression.xp}</strong> XP
+                    </>
+                  ) : (
+                    <>
+                      Level <strong>{state.progression.level}</strong> · <strong>{state.progression.xpIntoLevel}</strong> /{" "}
+                      {state.progression.xpForLevel} XP
+                    </>
+                  )}
+                </p>
+                <span
+                  class="stat-bar xp-bar"
+                  role="progressbar"
+                  aria-label="Level progress"
+                  aria-valuenow={state.progression.progress}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                >
+                  <span class="stat-bar-fill" style={`width: ${state.progression.progress}%`} />
+                </span>
+
                 {
                   state.lastAction && (
                     <p class="last-action">

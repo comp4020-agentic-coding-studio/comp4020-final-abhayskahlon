@@ -12,12 +12,12 @@ import { LEVEL_CAP, LEVEL_XP_THRESHOLDS, getProgression } from "../src/lib/creat
 // REQUIRED PER TRANSITION, not cumulative totals — LEVEL_XP_THRESHOLDS'
 // cumulative floors are their running sum (0, 100, 300, 600, 1000).
 describe("getProgression: pure level/XP logic", () => {
-  it("starts at level 1 with 0 xp into the level and 100 needed for level 2", () => {
+  it("starts at level 1 with 0 xp into the level and 100 needed to complete it", () => {
     const p = getProgression(0);
     expect(p.level).toBe(1);
     expect(p.xp).toBe(0);
     expect(p.xpIntoLevel).toBe(0);
-    expect(p.xpForNextLevel).toBe(100);
+    expect(p.xpForLevel).toBe(100);
     expect(p.progress).toBe(0);
   });
 
@@ -37,13 +37,13 @@ describe("getProgression: pure level/XP logic", () => {
     expect(getProgression(1000).level).toBe(5);
   });
 
-  it("reports xpIntoLevel and xpForNextLevel relative to the CURRENT level's own floor, not from zero", () => {
-    // Level 3 spans cumulative 300..599 (300 xp wide — the "200 required
-    // for level 2→3" transition from the brief).
+  it("reports xpIntoLevel and xpForLevel relative to the CURRENT level's own floor, not from zero", () => {
+    // Level 3 spans cumulative 300..599 (300 xp wide — the "300 required
+    // for level 3→4" transition from the brief).
     const p = getProgression(450);
     expect(p.level).toBe(3);
     expect(p.xpIntoLevel).toBe(150);
-    expect(p.xpForNextLevel).toBe(600);
+    expect(p.xpForLevel).toBe(300);
     expect(p.progress).toBe(50);
   });
 
@@ -63,7 +63,7 @@ describe("getProgression: pure level/XP logic", () => {
     const top = LEVEL_XP_THRESHOLDS[LEVEL_XP_THRESHOLDS.length - 1];
     const p = getProgression(top + 500);
     expect(p.level).toBe(LEVEL_CAP);
-    expect(p.xpForNextLevel).toBeNull();
+    expect(p.xpForLevel).toBeNull();
     expect(p.progress).toBe(100);
   });
 

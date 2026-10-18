@@ -811,6 +811,22 @@ main :where(pre code) {
   margin-top: var(--space-1);
 }
 
+/* PROCESS.md, Decision 16 — a SECOND, independent shared progress track,
+   styled identically to .milestone-progress/.milestone-bar just above
+   (same category of read-only room summary) rather than a new visual
+   language for one more thing being tracked. */
+.xp-progress {
+  font-size: 0.9rem;
+  color: var(--color-muted);
+  margin-top: var(--space-3);
+}
+
+.xp-bar {
+  display: block;
+  width: 100%;
+  margin-top: var(--space-1);
+}
+
 .last-action {
   font-size: 0.95rem;
   margin-top: var(--space-3);

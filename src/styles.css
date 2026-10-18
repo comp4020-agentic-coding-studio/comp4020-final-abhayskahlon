@@ -198,6 +198,15 @@ main :where(pre code) {
     align-items: start;
   }
 
+  /* .entry-page is .app-main's ONLY child on the entry route (never present
+     alongside the room view's h1/.intro/panels) — it just needs to span the
+     full grid width rather than get squeezed into a single 1fr column, so
+     its own internal flex-centering (below) has the whole viewport width to
+     center within, exactly like the room view's own full-width rows. */
+  .app-main > .entry-page {
+    grid-column: 1 / -1;
+  }
+
   /* Every direct grid item gets an explicit row — relying on auto-placement
      here is what originally pushed the heading/intro/indicator below the
      panels: with the three panels already occupying rows 1–2 via their own
@@ -308,6 +317,90 @@ main :where(pre code) {
 .creature-panel .condition,
 .creature-panel .last-action {
   text-align: left;
+}
+
+/* ---------- entry page: centered, with a decorative "live" background ----
+   A dedicated wrapper (index.astro) for the entry route only — the room
+   view's own .app-main grid rules above are completely untouched by any of
+   this; .entry-page only ever exists on the page shape the entry branch
+   renders. Centers .entry-panel on BOTH axes, unlike the plain top-of-page
+   flow every other panel on this site uses, since this is the one screen
+   with nothing else competing for vertical space. */
+.entry-page {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Subtracts the fixed header's own height (padding + line-height) so the
+     card centers in the space actually left below it, not the full
+     viewport — 100dvh over 100vh to avoid mobile browsers' address-bar
+     resize making the card visibly jump as it shows/hides. */
+  min-height: calc(100dvh - 3.5rem);
+  padding: var(--space-6) var(--space-4);
+  overflow: hidden; /* .entry-bg's oversized silhouette never causes scroll */
+}
+
+/* A single, large, very faint decorative silhouette — reusing Milo's own
+   established body shape (the same base path Milo.astro draws, simplified
+   to one path with no face/mood/wardrobe) rather than inventing new
+   decoration or pulling in an external image. Purely ambient: aria-hidden,
+   pointer-events: none, never competes with or obscures the actual card. */
+.entry-bg {
+  position: absolute;
+  inset: -10% -10% -10% auto;
+  right: -8%;
+  width: min(60rem, 140vw);
+  aspect-ratio: 1;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 160'%3E%3Cpath fill='%23ff8a5b' d='M44 150c-6 0-9-9-6-20-10-4-17-13-17-26 0-10 5-18 12-23-4-8-5-18-1-27 5-11 16-18 28-18 4-9 13-15 23-15s19 6 23 15c12 0 23 7 28 18 4 9 3 19-1 27 7 5 12 13 12 23 0 13-7 22-17 26 3 11 0 20-6 20-5 0-9-5-11-12a46 46 0 0 1-57 0c-2 7-6 12-11 12z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  opacity: 0.07;
+  /* Slow, gentle drift — the one "live" touch this page gets, entirely
+     CSS-driven (no JS, no canvas/particle library). Fully neutralised by
+     the universal prefers-reduced-motion override at the bottom of this
+     file, same as every other animation on this site. */
+  animation: entry-bg-drift 36s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+
+@keyframes entry-bg-drift {
+  from {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  to {
+    transform: translate(-3%, 2%) rotate(-2deg);
+  }
+}
+
+/* Wider than the generic .panel default on larger screens — a deliberate,
+   generously-sized centerpiece now that it's the sole focus of the page,
+   not a leftover narrow column inherited from the room view's content
+   width. Still capped, never full-bleed: a stretched form reads worse, not
+   better. */
+.entry-panel {
+  position: relative; /* sits above .entry-bg, which is position: absolute */
+  width: min(32rem, 100%);
+  margin: 0;
+}
+
+@media (min-width: 46rem) {
+  .entry-panel {
+    width: min(36rem, 100%);
+  }
+}
+
+/* The one-line "what's new" pointer — a footnote, not a feature: smaller
+   than .intro, no card/border/background of its own, so it never competes
+   with the two actual room-choice cards below it for attention. */
+.entry-patch-note {
+  margin: 0 0 var(--space-4);
+  font-size: 0.85rem;
+}
+
+.entry-patch-note a {
+  color: var(--color-muted);
+  font-weight: 600;
 }
 
 /* ---------- room entry: join or host ----------

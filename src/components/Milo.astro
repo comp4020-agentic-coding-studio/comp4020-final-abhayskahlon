@@ -247,16 +247,25 @@ function sparkle(cx: number, cy: number, r: number): string {
         </g>
       ) : family === "sleepy" ? (
         <g class="milo-face">
-          <path class="milo-eye-lid" d="M54 65c3.5-3 11-3 14.5 0l-1 5c-3.5 2-9.5 2-12.5 0z" />
-          <path class="milo-eye-lid" d="M91 65c3.5-3 10.5-3 14 0l-1 5c-3.5 2-9 2-12.5 0z" />
-          <ellipse class="milo-nose" cx="80" cy="81" rx="5.5" ry="4" />
+          {/* Closed, drowsy eyes drawn as a simple curved LINE (matching
+              every other mood's eye-closed/squint treatment elsewhere in
+              this file), not a filled dark shape — a filled eyelid this
+              close to the nose below it is what previously read as a
+              solid dark bar across the upper face. */}
+          <path class="milo-eye-line" d="M55 68c3.5-3 10.5-3 14 0" />
+          <path class="milo-eye-line" d="M91 68c3.5-3 10.5-3 14 0" />
+          <ellipse class="milo-nose" cx="80" cy="82" rx="5.5" ry="4" />
           {severe ? (
             <>
-              <ellipse class="milo-mouth-open" cx="80" cy="93" rx="6" ry="5" />
+              {/* Spaced well clear of the nose above it (previously only
+                  ~3 SVG units apart, which collapsed into one dark blob at
+                  the creature's actual small rendered size — found only by
+                  rendering, not by reading the coordinates). */}
+              <ellipse class="milo-mouth-open" cx="80" cy="99" rx="6" ry="5" />
               <text x="100" y="60" class="milo-zzz-char milo-zzz-solo">z</text>
             </>
           ) : (
-            <path class="milo-mouth" d="M70 91c4 2 16 2 20 0" />
+            <path class="milo-mouth" d="M70 93c4 2 16 2 20 0" />
           )}
         </g>
       ) : family === "hungry" ? (
@@ -453,8 +462,7 @@ function sparkle(cx: number, cy: number, r: number): string {
   /* Warm brown eyes, distinct from the darker outline color — large eyes
      filled with the same near-black tone as the linework is what reads as
      a dominating dark mask, independent of how big the eyes themselves are. */
-  .milo-eye,
-  .milo-eye-lid {
+  .milo-eye {
     fill: var(--milo-eye, #4a3220);
   }
 

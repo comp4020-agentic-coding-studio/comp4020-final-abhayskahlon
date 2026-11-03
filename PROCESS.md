@@ -1160,6 +1160,98 @@ real hunger threshold, suggested once that threshold is actually met; the
 worst stat's suggestion sorts first when several are low; never more than
 two suggestions at once.
 
+## Audit — accessibility and progressive enhancement, verified not assumed (2026-11-03)
+
+A rubric self-assessment found that progressive enhancement, keyboard
+accessibility, and focus visibility were implemented but neither claimed
+nor evidenced anywhere in this file — the silence read as an unconsidered
+gap rather than a verified property. This audit checks each one against
+the actual running app, not against reading the source and assuming it
+works, and states plainly what was and wasn't checked. Nothing in the
+application changed to produce these findings.
+
+**Progressive enhancement — verified with real JavaScript disabled.** With
+`javaScriptEnabled: false`, a real browser session both hosted a fresh room
+and performed a real care action (`feed`), each completing via the plain
+`<form method="post">` + 303-redirect round trip that
+`src/pages/api/actions.ts`'s own comment already describes ("the same POST
++ 303 shape the course's other starter uses, so the core loop needs no
+client JavaScript"). This is the first point that claim was actually
+checked against a real browser with JavaScript off, rather than only read
+and trusted — stats and "Last action" both updated correctly with no
+client-side script running at all. **Stated limitation:** the "● live" /
+"connecting..." badge correctly does nothing without JavaScript, since
+live updates depend entirely on the client-side `EventSource` connection
+`src/pages/index.astro` opens (`src/lib/sse.ts`'s server side has no
+fallback delivery mechanism for a client that never makes that
+connection), and there is no separate `<noscript>` message explaining that
+absence to a no-JS visitor — a real, minor gap, not a false claim.
+
+**Keyboard accessibility — verified by actually tabbing through and
+activating a control.** A real browser session tabbed through the room
+view from a fresh page load: every interactive control (the three nav
+links, the five appearance-picker buttons, every wardrobe-slot button, the
+adventure button, and all five care-action buttons) was reached via `Tab`
+in a sensible top-to-bottom, left-to-right order, each with a visibly
+rendered `outline: 2px solid` focus ring confirmed via the element's
+actual computed style, not by reading the CSS alone (`a:focus-visible,
+button:focus-visible` — `src/styles.css`). The `Feed` button was then
+actually activated with `Enter` alone (no mouse), and `.last-action`'s
+text changed to confirm the action genuinely ran. **Not yet checked:** no
+automated accessibility test (axe-core or equivalent) exists in `spec/` —
+this audit is a manual, one-time verification pass, not a regression
+guard; a future visual change could reintroduce a focus-order or
+visibility regression with nothing here to catch it.
+
+**Color contrast — computed directly from the real values in
+`src/styles.css`**, not assumed from how the colors look, for these three
+specific text/background pairs only — not a claim about every color
+combination this stylesheet defines, several of which (e.g. stat-bar
+hues, badge backgrounds) were not checked: muted text (`--color-muted:
+#7a6f60`) against both the white panel background and the cream
+`--color-surface-alt` background, body text (`--color-text: #2b2420`)
+against white, and the accent-ink link color (`--color-accent-ink:
+#b84b22`) against white. All three checked pairs clear WCAG AA's 4.5:1
+ratio for normal text (lowest measured: 4.66:1, muted text on the cream
+surface variant).
+
+**Semantic HTML / accessible names — already real, confirmed present, not
+re-implemented here.** `role="group"` + `aria-label` on both the
+appearance picker and each wardrobe slot; `aria-pressed` on every toggle
+button reflecting its real selected state; `role="progressbar"` with
+genuine `aria-valuenow`/`aria-valuemin`/`aria-valuemax` on the XP bar;
+`aria-live="polite"` + `role="alert"` on both error regions (entry-page
+and action-rejection); every decorative icon (`ActionIcon.astro`,
+`StatIcon.astro`) marked `aria-hidden="true"` since its accessible name is
+always the visible text label beside it, never the icon alone.
+
+**Not addressed at all — stated as a gap, not glossed over.** No stated
+claim and no test exists anywhere in this repo for behavior under slow or
+interrupted network conditions (no request timeout handling, no
+offline/retry messaging). This remains an open limitation.
+
+**Manual viewport inspection — kept separate from the automated test
+above, since a jsdom source check cannot see real layout.** Recorded here
+as its own, explicitly manual, non-automated finding:
+- **Desktop, ~1280×800** (the Playwright session's default viewport): room
+  view, fresh room — three panels (Milo, actions + shared activities,
+  Recent care) laid out left-to-right per the two/three-column grid
+  breakpoints; no visible overlap, no clipped text, no horizontal
+  scrollbar. Repeated after lowering stats via several `Play` actions:
+  the new `.care-suggestion` line wraps cleanly beneath "Last action,"
+  does not push the panel's height past its neighbors in a way that
+  breaks the row layout, and reads distinctly from Milo's own dialogue
+  line directly above it.
+- **Mobile, 390×844** (iPhone-class viewport): single-column stacked
+  layout (no breakpoint active below 46rem, by design — see the "desktop
+  two-column layout" comment in `src/styles.css`); same fresh-room and
+  lowered-stats checks repeated — no horizontal scroll, the suggestion
+  line wraps onto two lines without clipping or overlapping the stat bars
+  above or the "Recent care" card below it.
+- This inspection is a one-time manual check, not a committed, re-runnable
+  artifact — `spec/layout-structure.test.ts`'s structural checks are the
+  only part of this that re-runs automatically on every `pnpm check`.
+
 ## Out of scope for this deliverable (unchanged from the course's own list)
 
 No accounts/profiles, chat, voting/likes, maps, push/SMS/email
@@ -1387,3 +1479,61 @@ Each entry links the commit that carried out the decision it's filed under.
   [`f76fee0`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/f76fee0ac0ff5bcfd2af30ce387cfce06526def8)
 - Incident 3's actual fix (`form.getAttribute("action")`), full removal of
   the diagnostic instrumentation, and its regression test: [`a8d100c`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/a8d100c3e3e50c9f2175a6364048ca8f68eb5001)
+- Decisions 10, 11 and 12 (age reuses `sessions.createdAt`; wardrobe as
+  cosmetic shared state, not an inventory; adventure as one deterministic
+  outcome, not a sixth action) landing together — `src/components/age.ts`,
+  `src/components/mood.ts` and `src/components/dialogue.ts` are all
+  introduced in this commit, alongside `spec/wardrobe.test.ts` and
+  `spec/adventure.test.ts`: [`8b2d913`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/8b2d913d013ecaf02fafc9df5a42f964b2edbcba)
+- The dedicated-rooms pivot (Decision 13), as the six commits that actually
+  carried it out, in sequence: schema for a `rooms` table and a nullable,
+  unique `room_id` on `creature` [`1f1d02d`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/1f1d02d4749839cd6813ba26917d91130823d5cd);
+  room-scoped creature state, per-room SSE broadcasting, and server-side
+  care logging [`dcd567f`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/dcd567f1b27e29ea48db3ab462929a628111314f);
+  the room-aware entry/room-view UI (join by code, host a new room)
+  [`386b900`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/386b9004c94d3c6a358841256b552e73113cd2af);
+  the full ADR and Decision 13 writeup, plus the crit-10 reflection
+  [`415edaf`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/415edaf16b292e3279d1422856a8ee615f57ca15);
+  every existing spec file rescoped to hosted rooms plus new room
+  access-control tests (`spec/rooms.test.ts`) [`4a432f5`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/4a432f515561e24a47c42ae39e17a2741b1d1f99);
+  and the legacy-room migration backfill fix found in a pre-push
+  ship-readiness review, with its own regression test
+  (`spec/room-migration-backfill.test.ts`) [`3aa6999`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/3aa69992344171059c1f331a924de2cc8a92b436).
+- The durable `log_events` fallback — described in this file's own text as
+  Decision 13's follow-up, not a separately numbered decision — with its
+  own migration and `spec/log-events.test.ts`/`spec/log-events-migration.test.ts`:
+  [`8a368d3`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/8a368d3466f27ec1bf373d7fc6cfce7f24abcf26)
+- Hashing session ids in logs (`src/lib/log.ts`'s `actorTag()`), so
+  `log_events.actor` is a non-reversible tag as CLAUDE.md requires, never
+  the raw session id — with `spec/logging.test.ts` asserting the raw id
+  never appears in captured output: [`e7fee03`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/e7fee03e06bce63d9cad44e41a7fd94995922550)
+- Decision 14 (Milo milestones) — `total_care_actions`, `CARE_MILESTONES`,
+  and its migration, with `spec/milestones.test.ts` and
+  `spec/milestones-migration.test.ts`: [`a0542c1`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/a0542c1e44c44e8df7fea112463f4456f6c206b6)
+- Decisions 15 and 16 (five appearances, shared XP/levels, level-gated
+  accessories), as the five-commit sequence this file's own `4ac6288`
+  entry already describes: schema + migration for `appearance`/`xp` and
+  the expanded accessory registry [`1d88529`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/1d8852900ff6e5a7fec886cb6347c7bb46ec99c7);
+  XP awarded on every successful action, accessories gated by level and
+  appearance (`spec/xp-awards.test.ts`) [`abd303e`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/abd303e6100785a8f73e993a1053437522d15f14);
+  appearance-switching tests and history now showing which look was active
+  (`spec/appearance.test.ts`) [`3ccaab9`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/3ccaab9390eed2cc8921baf80ae5cd30b06c5f98);
+  the four new creature components (Plip, Bella, Simbaa, Oliver) and the
+  room-view appearance picker [`39209ec`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/39209ec188ce23f4be1c397056cd1df745f65f14);
+  the closing test proving an appearance switch broadcasts the same SSE
+  `update` signal as any care action [`27001f4`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/27001f41f377f2f927ce886e8d6dc4f8beb148a6);
+  and the Decision 15/16 writeup itself, with CLAUDE.md and README updated
+  to match [`4ac6288`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/4ac6288c6b844cabb9b5fbab2133585239fa4bff).
+- Three character-redesign follow-ups, already filed under Decision 15's
+  own text above as exactly what they are — visual-only fixes to
+  `src/components/Simbaa.astro`/`Milo.astro`, no schema, mechanics, or
+  architecture change, each verified by rendering before being called
+  done: Simbaa redesigned to actually read as a lamb [`4f67e5b`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/4f67e5b9d4b41ad3c24ed7d63fd4c262058b8532);
+  Simbaa's face enlarged and ears shrunk to match the reference
+  [`b1303d1`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/b1303d1409f47bb14c90def99dab597508988836);
+  Milo redesigned to actually read as a puppy, with a new regression test
+  in `spec/wardrobe.test.ts` [`b0b8551`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/b0b855158b1b0920d5d3277ce62d40e52d129c27);
+  and a follow-up fixing Milo's sleepy-mood eyes, which still read as a
+  filled dark blob even after the puppy redesign [`e782154`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/e7821545437eb5a47ed2458b6d33e94d11bc15eb).
+- Decision 17 (contextual care suggestions) — `src/components/
+  suggestions.ts` and `spec/care-suggestion.test.ts`: [`e0822c9`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/e0822c9dfdfba58c7e2dcda2617cd4fd3d8998ce)

@@ -97,6 +97,31 @@ A few things we actually read while deciding this, not retrofitted after:
   private, individual attachment to a small dependent creature. COMMONS asks
   what happens when that attachment has to be shared instead.
 
+## Why these features, together
+
+Care history, milestones, XP/levels, appearances, and contextual
+suggestions are five separate mechanisms, but all five answer the same
+question from a different angle, not five different questions. Care
+history (above) makes the *instant* legible — who acted, what they did,
+when. Milestones and XP/levels make the *cumulative* legible — what this
+room has built together over its whole lifetime, read as a shared total
+nobody owns individually, never as a comparison between the people who
+contributed to it. Appearances and contextual suggestions are the
+cosmetic and advisory layer riding on top of that same visible, shared
+state — a different look for the one creature everyone already sees, and
+a plain-language reading of numbers already on the page — neither is a
+second currency, a per-visitor score, or a new thing to manage. All five
+pieces read off the same underlying state and the same session/room
+scoping; none of them exists to be collected, ranked, or claimed by one
+visitor over another.
+
+What was deliberately left out, for the same reason: a shared
+claim/release system for who's "doing" the next care action, and a
+suggested daily schedule, were both considered and set aside, not for
+being infeasible but for widening the shared-care idea into a task-
+coordination one — a different concept, not a deeper version of this one
+(PROCESS.md, Decision 17).
+
 ## What we chose not to build
 
 Accounts, chat, leaderboards, shops, inventories, AI, notifications, maps,

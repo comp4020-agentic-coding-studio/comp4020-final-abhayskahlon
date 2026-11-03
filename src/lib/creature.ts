@@ -23,9 +23,12 @@ export type ActionName = (typeof ACTIONS)[number];
 // the room right now, short enough that a crit demo can watch it resolve.
 const SLEEP_COOLDOWN_MS = Number(process.env.SLEEP_COOLDOWN_MS ?? 8000);
 
-const ENERGY_FOR_PLAY = 15;
-const ENERGY_FOR_WALK = 10;
-const HUNGER_TO_SLEEP = 20;
+// Exported (not just used internally by applyAction below) so
+// suggestNextCare() can share these exact numbers rather than guessing a
+// second, possibly-diverging copy — see PROCESS.md, Decision 17.
+export const ENERGY_FOR_PLAY = 15;
+export const ENERGY_FOR_WALK = 10;
+export const HUNGER_TO_SLEEP = 20;
 
 export interface CreatureSnapshot {
   stats: Stats;

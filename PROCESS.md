@@ -1101,6 +1101,65 @@ golden crown rejected below level 5; `bunny-ears` rejected for the
 `oliver` appearance even at a qualifying level; and the existing
 genuinely-concurrent standard extended to xp.
 
+## Decision 17 — contextual care suggestions: read-only, derived, not coordination
+
+**Decision.** `src/components/suggestions.ts`'s `suggestNextCare(stats,
+activity)` is a pure function that reads the four already-displayed stats
+and returns up to two short, friendly suggestions ("A Feed might help —
+fullness is getting low"), shown as one new sibling paragraph next to the
+existing `.last-action` line (`src/pages/index.astro`). It stores nothing,
+broadcasts nothing, and gates nothing — every stat it reads is already
+rendered as a number on the same page; this only adds a plain-language
+reading of numbers a visitor could already see.
+
+**Why this, not the fuller "Care Coordination" idea first proposed.** The
+original proposal also included shared claim/release intentions (a room
+member marking "I'll feed him") and a suggested daily schedule — a real
+second subsystem: new schema, new transactions, a new SSE concern, a new
+isolation-test surface. Checked against the actual COMP4020 final-project
+brief (not just this file's own prior, stricter reading of it) before
+building anything: the course's own spec doesn't name chat, accounts, or
+coordination features as banned by name — "chat is out of scope" below is
+this project's own self-imposed rule, not a course requirement. The real
+risk the brief's rubric flags is the opposite kind of mistake: the
+Response band explicitly rewards "one idea, carried all the way" and
+penalizes being over- or under-scoped, with no feature checklist — nothing
+earns marks just by existing, only by strengthening this app's own stated
+definition of good. Six days out from the final deadline, with several
+existing systems (appearances, XP/levels, milestones) already carrying
+that definition, adding a second claim/release subsystem risked diluting
+rather than sharpening it. The claim/release intentions model and the
+suggested schedule are deferred, not rejected outright — the same
+treatment Decision 3 already gave the neglect callout.
+
+**Why it reuses `applyAction`'s real thresholds, not new ones.**
+`ENERGY_FOR_PLAY`, `ENERGY_FOR_WALK` (unused by this feature — `play` is
+the only play/walk-family suggestion it makes), and `HUNGER_TO_SLEEP`
+(`src/lib/creature.ts`) are now exported so `suggestNextCare` can gate a
+suggestion against the exact same number `applyAction` would reject it
+with. A suggestion recommending an action the server would immediately
+refuse would be actively misleading, not merely unhelpful — the spec for
+this feature said so explicitly, and it's the one correctness property a
+read-only hint like this genuinely needs. The "worth mentioning at all"
+threshold reuses `MOOD_CONCERN` (`src/components/mood.ts`) so a suggestion
+never disagrees with what the creature's own face/dialogue is already
+visually communicating.
+
+**Why it lives in `src/components/`, not `src/lib/`.** Same reasoning
+`mood.ts` and `dialogue.ts` already establish: `src/lib/*` is CLAUDE.md's
+validated, authoritative business-logic layer, and this never accepts or
+rejects an action — it's a read of public state, not a rule.
+
+**Tests.** `spec/care-suggestion.test.ts` — pure unit coverage of
+`suggestNextCare()` alone (no server needed, same shape as
+`spec/progression.test.ts`): nothing suggested while asleep or while every
+stat is comfortably high; `feed`/`clean` always eligible once their stat
+is low; `play` never suggested below its real energy threshold, suggested
+once that threshold is actually met; `sleep` never suggested below its
+real hunger threshold, suggested once that threshold is actually met; the
+worst stat's suggestion sorts first when several are low; never more than
+two suggestions at once.
+
 ## Out of scope for this deliverable (unchanged from the course's own list)
 
 No accounts/profiles, chat, voting/likes, maps, push/SMS/email

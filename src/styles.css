@@ -874,6 +874,26 @@ main :where(pre code) {
   border-top: 1px dashed var(--color-border);
 }
 
+/* PROCESS.md, Decision 17 — read-only "what might help next," styled as
+   the same category of small muted summary .panel-note already is, not a
+   new visual language (no new color/alert styling — this is a friendly
+   hint, never a warning). Sits directly under .last-action with no divider
+   of its own since it's a continuation of the same handover thought. */
+.care-suggestion {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  color: var(--color-muted);
+  font-size: 0.9rem;
+}
+
+.care-suggestion-icon {
+  flex-shrink: 0;
+  width: 1.1em;
+  height: 1.1em;
+}
+
 /* ---------- actions ---------- */
 
 .actions {

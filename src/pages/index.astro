@@ -8,6 +8,7 @@ import StatIcon from "../components/StatIcon.astro";
 import { getLatestPatch } from "../lib/changelog";
 import { ACCESSORIES, ACTIONS, APPEARANCE_LABELS, APPEARANCES, type AccessorySlot, type ActionName } from "../lib/creature";
 import { defaultCreatureStats, getCreatureState, getSessionRoom } from "../lib/db";
+import { suggestNextCare } from "../components/suggestions";
 import { DISPLAY_NAME_MAX_LENGTH, ROOM_CODE_LENGTH } from "../lib/room";
 import { getOrCreateSession } from "../lib/session";
 import "../styles.css";
@@ -57,6 +58,13 @@ const showEntry = !room || !Astro.url.searchParams.has("enter") || Astro.url.sea
 const state = room ? getCreatureState(room.id) : null;
 const age = state && room ? formatMiloAge(room.createdAt) : null;
 const dialogue = state ? pickDialogue(state.stats, state.activity, state.history[0]?.createdAt ?? null) : null;
+
+// PROCESS.md, Decision 17 — a read-only "what might help next" hint,
+// derived fresh from the same stats already shown as numbers above. Never
+// its own state, never broadcast, never gates an action — at most the
+// single highest-priority suggestion is shown, right next to the existing
+// "Last action" line it's meant to read alongside.
+const suggestion = state ? (suggestNextCare(state.stats, state.activity)[0] ?? null) : null;
 
 // The display name for whichever of the five fixed, authored appearances
 // is currently selected (PROCESS.md, Decision 15) — still not a naming
@@ -462,6 +470,22 @@ const activityPhrase =
                           by <strong>{state.lastActorLabel}</strong>
                         </>
                       )}
+                    </p>
+                  )
+                }
+
+                {/* A sibling of .last-action, deliberately never nested
+                    inside it: sessions.test.ts and wardrobe.test.ts both
+                    assert .last-action's exact textContent is unchanged
+                    across a rejected/no-op action, so this suggestion — a
+                    read of CURRENT stats, which keep moving regardless of
+                    whether the last action succeeded — has to live in its
+                    own element or it would make those assertions flaky. */}
+                {
+                  suggestion && (
+                    <p class="care-suggestion">
+                      <ActionIcon action={suggestion.action} class="care-suggestion-icon" />
+                      A <strong>{ACTION_LABELS[suggestion.action] ?? suggestion.action}</strong> might help — {suggestion.reason}.
                     </p>
                   )
                 }

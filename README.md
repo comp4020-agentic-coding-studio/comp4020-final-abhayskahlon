@@ -8,8 +8,10 @@ a name, and either hosts a brand-new room (getting a short code back) or
 joins an existing one by typing that code. Everyone in the same room shares
 that room's one creature — a stranger in there can feed, play with, walk,
 clean, or put it to sleep, and the next person in that room sees exactly
-what the one before them left behind: its current needs, and a short,
-chronological record of who did what. A different room has its own
+what the one before them left behind: its current needs, a short,
+chronological record of who did what, and — read straight off those same
+current needs, never a new mechanic of its own — a quiet suggestion of
+what might help next. A different room has its own
 completely separate creature, history, and live updates — nothing one room
 does is visible to another. There's no login — a lightweight, anonymous
 cookie is enough to tell visitors in the same room apart — and most actions

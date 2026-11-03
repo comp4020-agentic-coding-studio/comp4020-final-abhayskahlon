@@ -3,6 +3,16 @@
 What's changed, in plain terms, newest first — read live via `/patch-notes/`
 and summarised on the entry page's own "what's new in COMMONS" section.
 
+## Patch 1.7 — a quiet suggestion of what might help next
+
+Right next to "Last action," the room view now shows at most one short,
+friendly suggestion — "A Feed might help, fullness is getting low" — read
+straight off the same four stats already shown as bars on the page. Never
+a new mechanic: nothing is stored, nothing is broadcast, and it never
+suggests an action the server would currently reject (too tired to play,
+too hungry to sleep). Disappears once nothing really needs doing, and
+never shows anything at all while the creature is asleep.
+
 ## Patch 1.6 — Milo redesigned as a proper puppy
 
 The original character used to read as a generic rounded creature — his

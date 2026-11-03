@@ -1,0 +1,461 @@
+---
+// The Adventure activity's interactive layer — a short pixel-art runner,
+// NOT a new action. The server-authoritative contract is completely
+// unchanged: this component's result screen contains the SAME, ONLY
+// `.activity-form.adventure-form` that existed before this feature
+// (POST /api/adventure, no body, 303/409, read by index.astro's existing
+// generic delegated submit handler — unmodified by this component).
+//
+// Progressive enhancement, preserved not narrowed: the form below is what
+// server-rendered HTML shows BY DEFAULT — a real, working, no-JS button
+// that performs the adventure immediately, exactly as it always did. Only
+// once JavaScript actually runs does a render-blocking script (the first
+// <script> in this file, intentionally not `defer`) hide that default
+// form and reveal an equivalent-looking "launch" button in its place — a
+// plain inline button, NOT the full-screen overlay itself, which only
+// ever opens once that launch button is actually clicked. A no-JS or
+// JS-disabled visitor never sees the game at all and is never worse off
+// than before this feature existed; a JS-enabled visitor who hasn't
+// clicked anything yet sees ordinary page content, never an unsolicited
+// full-screen takeover on every load or on every unrelated live-state
+// refresh (switching appearance, another visitor's care action, etc.).
+//
+// All gameplay input/physics/lifecycle lives in src/components/
+// adventureGame.ts (startAdventureGame) — this component's own <script>
+// never attaches a competing keyboard/pointer listener; it only calls
+// that module's exported function and reacts to its callbacks.
+import type { AppearanceId } from "../lib/creature";
+import ActionIcon from "./ActionIcon.astro";
+
+interface Props {
+  appearance: AppearanceId;
+  creatureName: string;
+}
+
+const { appearance, creatureName } = Astro.props;
+---
+
+<div class="adventure-game" data-appearance={appearance} data-creature-name={creatureName}>
+  {/* DEFAULT, NO-JS VIEW: the real, only copy of the adventure form.
+      Visible by default; hidden by the render-blocking script below the
+      instant JavaScript actually runs. This is not a fallback copy of a
+      form that exists elsewhere — there is exactly one
+      .activity-form.adventure-form in the whole page, and this is it. */}
+  <div class="adventure-static-trigger" data-adventure-screen="static">
+    <form method="post" action="/api/adventure" class="activity-form adventure-form">
+      {/* Not read by /api/adventure.ts (that route takes no action name at
+          all — there's only one adventure to validate) — this exists purely
+          so the client's generic playReaction(actionName) call picks
+          "adventure" and reveals Milo.astro's mud-splat reaction group, the
+          same mechanism every care action already uses. */}
+      <input type="hidden" name="action" value="adventure" />
+      <button>
+        <ActionIcon action="adventure" />
+        Send {creatureName} on an adventure
+      </button>
+    </form>
+  </div>
+
+  {/* Starts hidden; revealed by script IN PLACE OF the static form above
+      — an ordinary inline button, not the full-screen overlay. Clicking
+      THIS is what opens the overlay; JavaScript running at all is never
+      by itself sufficient to show it, so a page load or an unrelated
+      live-state refresh never throws up an unsolicited full-screen
+      takeover. */}
+  <button type="button" class="adventure-launch-button" data-adventure-launch hidden>
+    <ActionIcon action="adventure" />
+    Send {creatureName} on an adventure
+  </button>
+
+  {/* Starts hidden; only ever revealed by clicking the launch button
+      above. */}
+  <div class="adventure-overlay" data-adventure-overlay hidden>
+    <div class="adventure-screen" data-adventure-screen="intro">
+      <h2>Adventure Run</h2>
+      <p>
+        Help {creatureName} explore the outdoors! Jump over obstacles and avoid birds until you reach the finish!
+      </p>
+      <p class="adventure-controls-hint">
+        <kbd>SPACE</kbd> or <kbd>&uarr;</kbd> to jump — tap or click on mobile
+      </p>
+      <button type="button" class="adventure-start-button" data-adventure-start>
+        <ActionIcon action="adventure" />
+        Start Adventure
+      </button>
+      <button type="button" class="adventure-exit-link" data-adventure-exit-intro>Cancel</button>
+    </div>
+
+    <div class="adventure-screen adventure-play-screen" data-adventure-screen="play" hidden>
+      <div class="adventure-hud">
+        <span class="adventure-hud-distance">Distance <strong data-adventure-distance>0</strong> m</span>
+        <span class="adventure-hud-stars">&#11088; &times; <strong data-adventure-collected>0</strong></span>
+        <span class="adventure-hud-controls">
+          <button type="button" class="adventure-hud-button" data-adventure-pause>Pause</button>
+          <button type="button" class="adventure-hud-button" data-adventure-exit>Exit</button>
+        </span>
+      </div>
+      <canvas class="adventure-canvas" data-adventure-canvas width="240" height="135"></canvas>
+      <p class="adventure-paused-note" data-adventure-paused-note hidden>Paused</p>
+    </div>
+
+    <div class="adventure-screen" data-adventure-screen="success" hidden>
+      <h2>Adventure Complete!</h2>
+      <p data-adventure-result-text></p>
+      <p class="adventure-result-stats">
+        Distance <strong data-adventure-final-distance>0</strong> m &middot; Stars{" "}
+        <strong data-adventure-final-collected>0</strong>
+      </p>
+      <form method="post" action="/api/adventure" class="activity-form adventure-form-confirm">
+        <input type="hidden" name="action" value="adventure" />
+        <button data-adventure-confirm>Return to Commons</button>
+      </form>
+    </div>
+
+    <div class="adventure-screen" data-adventure-screen="collision" hidden>
+      <h2>Game Over</h2>
+      <p>Not quite — {creatureName} will know better next time.</p>
+      <p class="adventure-result-stats">
+        Distance <strong data-adventure-final-distance-collision>0</strong> m &middot; Stars{" "}
+        <strong data-adventure-final-collected-collision>0</strong>
+      </p>
+      <div class="adventure-result-actions">
+        <button type="button" class="adventure-retry-button" data-adventure-retry>Retry</button>
+        <form method="post" action="/api/adventure" class="activity-form adventure-form-confirm">
+          <input type="hidden" name="action" value="adventure" />
+          <button data-adventure-confirm>Return to Commons</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Render-blocking (no `defer`, no `type="module"` deferral semantics
+  // beyond module scripts' own default deferred execution — see the
+  // immediate `hidden` toggle below, which runs as soon as this script
+  // parses, before the user can interact with the static view at all in
+  // practice): the one and only place that decides "JS can run here" and
+  // switches from the default no-JS form to the game. If this script
+  // never runs (disabled/blocked/fails), the page already shows a
+  // complete, working adventure form — nothing else needs to happen.
+  import { startAdventureGame, type AdventureGameController } from "./adventureGame";
+  import type { AppearanceId } from "../lib/creature";
+
+  function setup(root: HTMLElement) {
+    // index.astro's refreshLiveState() replaces #live-state's entire
+    // subtree with freshly-PARSED html (DOMParser + replaceWith) after
+    // every successful action — including, unavoidably, this component's
+    // own Adventure completion, since that's the same live-update path
+    // every other action already goes through. A parsed/inserted <script>
+    // never re-executes, so this function has to be callable again for a
+    // brand-new `.adventure-game` root, not just once at page load — the
+    // document-level MutationObserver at the bottom of this file is what
+    // calls it again each time. Guard against double-wiring the exact
+    // same node (not currently possible since replaceWith always creates
+    // a genuinely new node, but cheap insurance if that ever changes).
+    if (root.dataset.adventureWired === "true") return;
+    root.dataset.adventureWired = "true";
+
+    const appearance = root.dataset.appearance as AppearanceId;
+    const creatureName = root.dataset.creatureName ?? appearance;
+    const maybeStaticTrigger = root.querySelector<HTMLElement>('[data-adventure-screen="static"]');
+    const maybeLaunchButton = root.querySelector<HTMLButtonElement>("[data-adventure-launch]");
+    const maybeOverlay = root.querySelector<HTMLElement>("[data-adventure-overlay]");
+    if (!maybeStaticTrigger || !maybeLaunchButton || !maybeOverlay) return;
+    // Reassigned to plain, definitely-non-null locals: TypeScript's
+    // control-flow narrowing from the guard above doesn't carry into the
+    // nested function declarations below (closeOverlay, startRun), which
+    // reference these across the whole lifetime of this `setup()` call —
+    // these two names are what those closures actually capture.
+    const staticTrigger = maybeStaticTrigger;
+    const launchButton = maybeLaunchButton;
+    const overlay = maybeOverlay;
+
+    // Confirmed JS can run: swap the plain fallback form for an
+    // equivalent-looking plain button. The OVERLAY stays hidden until
+    // that button is actually clicked — running this script is never, by
+    // itself, a reason to show a full-screen takeover.
+    staticTrigger.hidden = true;
+    launchButton.hidden = false;
+    launchButton.addEventListener("click", () => {
+      overlay.hidden = false;
+    });
+
+    const screens = {
+      intro: root.querySelector<HTMLElement>('[data-adventure-screen="intro"]'),
+      play: root.querySelector<HTMLElement>('[data-adventure-screen="play"]'),
+      success: root.querySelector<HTMLElement>('[data-adventure-screen="success"]'),
+      collision: root.querySelector<HTMLElement>('[data-adventure-screen="collision"]'),
+    };
+
+    function showScreen(name: keyof typeof screens) {
+      for (const [key, el] of Object.entries(screens)) {
+        if (el) el.hidden = key !== name;
+      }
+    }
+
+    const canvas = root.querySelector<HTMLCanvasElement>("[data-adventure-canvas]");
+    const distanceEl = root.querySelector<HTMLElement>("[data-adventure-distance]");
+    const collectedEl = root.querySelector<HTMLElement>("[data-adventure-collected]");
+    const pausedNote = root.querySelector<HTMLElement>("[data-adventure-paused-note]");
+    const pauseButton = root.querySelector<HTMLButtonElement>("[data-adventure-pause]");
+    const exitButton = root.querySelector<HTMLButtonElement>("[data-adventure-exit]");
+    const exitIntroButton = root.querySelector<HTMLButtonElement>("[data-adventure-exit-intro]");
+    const startButton = root.querySelector<HTMLButtonElement>("[data-adventure-start]");
+    const retryButton = root.querySelector<HTMLButtonElement>("[data-adventure-retry]");
+
+    let controller: AdventureGameController | null = null;
+
+    // The ONE teardown call site. Called before closing the overlay for
+    // any reason (finishing a run, Exit, Cancel, Retry restarting), so
+    // there is never a lingering RAF loop or listener regardless of how
+    // the overlay closes.
+    function teardown() {
+      controller?.stop();
+      controller = null;
+    }
+
+    function closeOverlay() {
+      teardown();
+      overlay.hidden = true;
+      // Back to the plain launch button, NOT the no-JS static form — JS
+      // is already confirmed working in this session, so there's no
+      // reason to fall back to the degraded path.
+      showScreen("intro");
+    }
+
+    function startRun() {
+      if (!canvas) return;
+      teardown();
+      showScreen("play");
+      if (pausedNote) pausedNote.hidden = true;
+      if (pauseButton) pauseButton.textContent = "Pause";
+      controller = startAdventureGame(canvas, appearance, {
+        onHudUpdate: (hud) => {
+          if (distanceEl) distanceEl.textContent = String(hud.distance);
+          if (collectedEl) collectedEl.textContent = String(hud.collected);
+        },
+        onPauseChange: (paused) => {
+          if (pausedNote) pausedNote.hidden = !paused;
+          if (pauseButton) pauseButton.textContent = paused ? "Resume" : "Pause";
+        },
+        onFinish: (result) => {
+          // Stop the simulation BEFORE showing the result screen, well
+          // before the player can click "Return to Commons" — no race
+          // between tearing down the game loop and that form's own
+          // submit handler (index.astro's existing generic listener).
+          teardown();
+          const screenName = result.outcome === "success" ? "success" : "collision";
+          showScreen(screenName);
+          const suffix = screenName === "success" ? "" : "-collision";
+          const distanceOut = root.querySelector<HTMLElement>(`[data-adventure-final-distance${suffix}]`);
+          const collectedOut = root.querySelector<HTMLElement>(`[data-adventure-final-collected${suffix}]`);
+          if (distanceOut) distanceOut.textContent = String(result.distance);
+          if (collectedOut) collectedOut.textContent = String(result.collected);
+          const resultText = root.querySelector<HTMLElement>("[data-adventure-result-text]");
+          if (resultText) {
+            resultText.textContent = `${creatureName} had an amazing adventure! They explored new places and came back full of energy!`;
+          }
+        },
+      });
+    }
+
+    startButton?.addEventListener("click", startRun);
+    retryButton?.addEventListener("click", startRun);
+    exitIntroButton?.addEventListener("click", closeOverlay);
+    exitButton?.addEventListener("click", closeOverlay);
+    pauseButton?.addEventListener("click", () => {
+      if (!controller) return;
+      if (controller.isPaused()) controller.resume();
+      else controller.pause();
+    });
+
+    // Belt-and-braces: if the overlay element is ever hidden by some
+    // OTHER code path (there currently isn't one, but this keeps the
+    // "never leave the loop running in the background" guarantee true
+    // even if that changes later) — a MutationObserver watching the
+    // `hidden` attribute, calling teardown() if it becomes hidden while a
+    // run is still active.
+    const observer = new MutationObserver(() => {
+      if (overlay.hidden && controller) teardown();
+    });
+    observer.observe(overlay, { attributes: true, attributeFilter: ["hidden"] });
+  }
+
+  for (const root of document.querySelectorAll<HTMLElement>(".adventure-game")) {
+    setup(root);
+  }
+
+  // Re-wires any FRESH .adventure-game node that appears later —
+  // concretely, the one index.astro's refreshLiveState() inserts after
+  // every successful action (adventure or otherwise) replaces
+  // #live-state wholesale with newly-parsed, script-inert markup. Without
+  // this, the adventure game would correctly show the no-JS fallback
+  // button again after the very first run (since the fresh node starts
+  // in its default, server-rendered state) but would never upgrade back
+  // into the game — exactly the kind of "worked once, silently stopped
+  // working" bug this project's own incident history (PROCESS.md,
+  // Incident 1) already warns against.
+  const bodyObserver = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        if (!(node instanceof HTMLElement)) continue;
+        if (node.matches(".adventure-game")) setup(node);
+        for (const nested of node.querySelectorAll?.(".adventure-game") ?? []) {
+          if (nested instanceof HTMLElement) setup(nested);
+        }
+      }
+    }
+  });
+  bodyObserver.observe(document.body, { childList: true, subtree: true });
+</script>
+
+<style>
+  .adventure-static-trigger .adventure-form {
+    margin: 0;
+  }
+
+  .adventure-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    background: rgba(43, 36, 32, 0.55);
+    padding: var(--space-4);
+  }
+
+  /* [hidden] is only the UA stylesheet's default (display: none) — this
+     project's own `.adventure-overlay { display: flex }` above would
+     otherwise outrank that default by specificity and keep the overlay
+     occupying (and capturing clicks on) the full viewport even while
+     `hidden` is set, exactly the bug a real no-JS Playwright check caught
+     here: the static fallback button was unclickable because the
+     overlay, though invisible, still intercepted pointer events. */
+  .adventure-overlay:not([hidden]) {
+    display: flex;
+  }
+
+  .adventure-screen {
+    background: var(--color-bg);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+    padding: var(--space-6);
+    max-width: 28rem;
+    width: 100%;
+    text-align: center;
+  }
+
+  .adventure-screen h2 {
+    margin-top: 0;
+  }
+
+  .adventure-controls-hint kbd {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: 0.1rem 0.5rem;
+    font-size: 0.85rem;
+  }
+
+  .adventure-start-button,
+  .adventure-retry-button,
+  .adventure-form-confirm button {
+    background: var(--color-accent);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius-pill);
+    padding: var(--space-3) var(--space-5);
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .adventure-exit-link {
+    display: block;
+    margin: var(--space-3) auto 0;
+    background: none;
+    border: none;
+    color: var(--color-muted);
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
+  .adventure-play-screen {
+    max-width: 32rem;
+  }
+
+  .adventure-hud {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
+    font-weight: 600;
+    flex-wrap: wrap;
+    /* A retro "readout" feel for the score/distance text, using the
+       system monospace stack already available in every browser — no new
+       font file, no @font-face, no Google Fonts dependency. */
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Consolas, monospace;
+  }
+
+  .adventure-hud-button {
+    background: var(--color-surface-alt);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-pill);
+    padding: 0.3rem 0.8rem;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+
+  .adventure-canvas {
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    aspect-ratio: 240 / 135;
+    background: #cdeefb;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border);
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    display: block;
+  }
+
+  .adventure-paused-note {
+    margin-top: var(--space-2);
+    font-weight: 600;
+    color: var(--color-accent-ink);
+  }
+
+  .adventure-result-stats {
+    color: var(--color-muted);
+    margin-bottom: var(--space-4);
+  }
+
+  .adventure-result-actions {
+    display: flex;
+    gap: var(--space-3);
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .adventure-form-confirm {
+    margin: 0;
+    display: inline-block;
+  }
+
+  .adventure-retry-button {
+    background: var(--color-surface-alt);
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
+  }
+
+  @media (max-width: 30rem) {
+    .adventure-screen {
+      padding: var(--space-4);
+    }
+  }
+</style>

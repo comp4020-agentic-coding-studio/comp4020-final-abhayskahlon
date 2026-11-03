@@ -1252,6 +1252,211 @@ as its own, explicitly manual, non-automated finding:
   artifact — `spec/layout-structure.test.ts`'s structural checks are the
   only part of this that re-runs automatically on every `pnpm check`.
 
+## Decision 18 — the Adventure runner: a playable interaction, not a sixth action
+
+**Decision.** `src/components/AdventureGame.astro` (markup, screens,
+lifecycle wiring) and `src/components/adventureGame.ts` (pure physics,
+obstacle generation, collision, rendering, input) add a short, pixel-art
+side-scrolling runner as the Adventure activity's interaction — not a new
+action, not a new endpoint, not a new database table. `POST
+/api/adventure` (`src/pages/api/adventure.ts`), `performAdventure`
+(`src/lib/db.ts`), and `applyAdventure` (`src/lib/creature.ts`) are
+completely unchanged: same deterministic deltas (energy −10, happiness
++15, cleanliness −30), same rejection rule (asleep only), same flat XP
+award, same `care_events` row. The game's own in-run score (distance,
+stars collected) is cosmetic, shown only on its own result screen, and is
+never sent to the server — the "Return to Commons" confirm is the exact
+same bodyless POST that existed before this feature, so "don't trust
+client-submitted distance" holds by construction, not by new server-side
+validation.
+
+**Why a new pixel sprite system, not the existing SVG creature art.**
+Checked directly before building anything: `src/components/{Milo,Plip,
+Bella,Simbaa,Oliver}.astro` are smooth, cubic-Bézier-curve inline SVG —
+floppy-ear teardrops, curled tails, rounded bodies — with no gradients or
+filters to complicate things, but nothing pre-aligned to any pixel grid
+either. Scaling and pixelating that art would crush its curves into
+blobs, not produce deliberate pixel art. There is also no `public/` or
+`src/assets/` directory anywhere in this repo and no image files at
+all — no existing static-asset pipeline this feature could extend without
+first building one from scratch. `adventureGame.ts` instead defines five
+small, flat-color sprite palettes (`SPRITE_PALETTES`), each one echoing
+its creature's real body color (e.g. Milo's `--milo-body: #f0b374`, Plip's
+dark body/orange accents) without tracing or miniaturizing the SVG art —
+a new, simple, blocky identity in the same spirit, drawn with plain
+`ctx.fillRect` calls onto a small canvas (`imageSmoothingEnabled = false`,
+CSS `image-rendering: pixelated`). Zero new dependencies, zero new asset
+files, zero changes to `astro.config.ts`.
+
+**Progressive enhancement, preserved not narrowed — corrected mid-design.**
+An earlier draft of this feature would have made the Adventure activity's
+one-click path require JavaScript, a real regression from every other
+action on this page, each of which already works with JavaScript
+disabled (the existing POST + 303 shape). Caught and corrected before
+implementation: the real, only `.activity-form.adventure-form` — unchanged
+action/hidden-input shape — is what server-rendered HTML shows by
+default. A render-blocking script, if it runs at all, replaces that
+default view with an ordinary-looking "Send X on an adventure" button in
+its place; clicking THAT opens the game overlay. A no-JS or JS-disabled
+visitor sees exactly what existed before this feature and is never worse
+off. Verified directly with a real `javaScriptEnabled: false` browser
+session: hosting a room and performing a real adventure both complete
+exactly as they did before this feature, with the overlay never rendered
+at all.
+
+**A real bug, found only by actually clicking through it, not by reading
+the code — recorded here per this project's own incident-documentation
+habit.** The first working version revealed the full-screen overlay the
+instant its own script ran, rather than only when the newly-added launch
+button was actually clicked — meaning every page load with JavaScript
+enabled threw up an unsolicited full-screen takeover over the entire
+dashboard, and a Playwright script that happened to click the adventure
+trigger immediately after each page load never exposed this, since it
+never tried to interact with anything else first. Found by a script that
+tried to switch the room's appearance before touching Adventure at all,
+which timed out because the (invisible, `hidden`-but-click-intercepting)
+overlay sat on top of the whole page. Root cause: `.adventure-overlay`'s
+own `display: flex` rule outranked the browser's default `[hidden] {
+display: none }` by specificity, so setting the `hidden` attribute alone
+never actually removed it from the layout or from pointer-event handling.
+Fixed by scoping that rule to `.adventure-overlay:not([hidden])` and,
+separately, by restructuring the launch flow itself so the overlay is
+never shown just because JavaScript ran — only an explicit click on the
+plain launch button opens it. Both fixes verified by rendering: the
+overlay stays genuinely absent (`hidden`, zero layout impact) until
+clicked, and an unrelated action (Feed) performed right after page load
+completes normally with no overlay in the way.
+
+**A second real bug, found the same way.** `index.astro`'s
+`refreshLiveState()` (PROCESS.md, Decision 5/Incident 1) replaces
+`#live-state`'s entire subtree with freshly-*parsed* HTML after every
+successful action — including, unavoidably, the Adventure activity's own
+completion, since that is the same live-update path every other action
+already goes through. A parsed-and-inserted `<script>` never re-executes,
+so the very first adventure's own completion would silently strand every
+subsequent one: the freshly-swapped-in markup would show the correct
+no-JS fallback form again, but nothing would ever upgrade it back into
+the game. Fixed with a `document`-level `MutationObserver` watching for
+new `.adventure-game` nodes and re-running the same setup function on
+each one, with a `data-adventure-wired` guard against double-wiring.
+Verified by actually completing two full adventures in the same session,
+back to back, confirming the second one plays and submits correctly
+through the exact same re-wired form.
+
+**Pause, Exit, and auto-pause.** `adventureGame.ts`'s returned controller
+(`pause`/`resume`/`stop`/`isPaused`) is the ONE place input, physics, and
+the `requestAnimationFrame` loop live — `AdventureGame.astro`'s own script
+never attaches a second, competing listener for gameplay input; it only
+calls into this controller and reacts to its callbacks. A
+`visibilitychange` listener (added and removed entirely inside
+`adventureGame.ts`) auto-pauses a run the instant the tab is backgrounded.
+Exit calls `stop()` and returns to the dashboard without ever touching
+`#live-state` or submitting anything — verified directly by watching the
+browser's own network log through a full pause → resume → exit sequence
+and confirming zero requests to `/api/adventure` fired.
+
+**Obstacle fairness is a real, checked guarantee, not an assumption.**
+`generateObstacles()`/`validateSequence()` reason about the whole upcoming
+sequence, not just consecutive pairs: a ground obstacle forces a jump, a
+bird forces NOT jumping, and the generator sizes the gap between any pair
+of *conflicting* kinds against the game's `MAX_SPEED` (the fastest the
+run ever reaches), not the speed at the point the gap was chosen — an
+earlier version sized gaps against the LOCAL speed at generation time,
+which a seeded test (`spec/adventure-game.test.ts`) caught failing at
+higher speeds, since the real-time gap between two obstacles shrinks as
+scroll speed ramps up even when the distance between them doesn't change.
+`validateSequence()` is exercised independently of the generator across
+many seeded sequences, so this is a checked guarantee about the
+generator's output, not merely "the code looks like it should work."
+
+**A visual-quality pass, done after the game was already functionally
+complete — five more real bugs, each found only by actually rendering the
+game, never by reading the code.** The first working version was
+functionally correct but visually a prototype: a flat rectangle for the
+player, flat-color-rectangle obstacles, an empty sky, and a star counter
+permanently stuck at 0 because no collection mechanic existed yet. Fixed
+entirely inside `adventureGame.ts`'s rendering layer and one small
+addition (`generateStars`/star collision) — physics, collision rects,
+`generateObstacles`/`validateSequence`, and the controller contract above
+are all untouched by this pass. Every sprite (five creature heads, log,
+rock, puddle, bird, star) is drawn through one shared `drawPixelGrid`
+primitive from small hand-authored character grids, never an image file
+or sprite library. Bugs found:
+
+1. **Milo's ears read as raised arms.** The original `HEAD_MILO` grid put
+   ear pixels at the same rows as the eyes, flanking the face rather than
+   hanging from it — confirmed by an 8×-zoomed canvas screenshot. Fixed by
+   redesigning the grid so the ears droop below the head's own bottom
+   edge.
+2. **The bird was an unrecognizable disconnected blob.** The original
+   `BIRD_WINGS_UP`/`DOWN` grids had no coherent silhouette — confirmed by
+   rendering the sprite in isolation. Redesigned as a simple chevron/V
+   bird-in-flight shape, confirmed legible both in isolation and in a live
+   run against the sky.
+3. **The collision pose was never actually visible.** `finish("collision")`
+   ran synchronously in the same tick as the hit-frame render, so the
+   browser never painted that frame before the result screen replaced the
+   canvas — confirmed by repeated, tightly-timed screenshot attempts that
+   always landed on the result screen, never the hit. Fixed with a 450ms
+   `setTimeout` hold between the hit render and calling `finish`, with the
+   timer cleared in `stop()` so clicking Exit during that window can't race
+   it into firing after cleanup.
+4. **The star generator starved itself.** The original placement loop
+   skipped a candidate position entirely if it fell within
+   `STAR_OBSTACLE_MARGIN` of any obstacle, rather than retrying nearby —
+   confirmed by a standalone simulation of the generator (2 stars for a
+   full run instead of a realistic 11) and empirically in-browser (0
+   stars ever collected across several real runs). Fixed with a
+   nudge-forward retry loop (`STAR_NUDGE_STEP`/`STAR_MAX_NUDGES`); a
+   regression test now asserts at least 5 stars per run across 20 seeds.
+5. **The collection sparkle was functionally present but invisible.** A
+   near-white pale yellow was indistinguishable from the sky — confirmed
+   by direct `getImageData()` pixel sampling, not just a screenshot.
+   Replaced with a bright, saturated orange and a longer-lived burst
+   effect; the color's actual presence on canvas during a real collection
+   was then re-confirmed the same way.
+6. **A visible gap of flat sky between the distant hill band and the
+   ground.** The hill tiles were drawn only down to `GROUND_Y`, but the
+   ground itself starts `PLAYER_SIZE` pixels lower (`groundTopY`), leaving
+   a flat strip of sky-colored canvas between the two layers in every
+   frame — confirmed by inspecting a full-canvas screenshot, not visible
+   at the scale of the dashboard's small game window. Fixed by extending
+   each hill tile down to `groundTopY` instead of stopping at `GROUND_Y`.
+
+Collectible stars are new, additive, and intentionally separate from
+obstacle fairness: `generateStars()` is never consulted by
+`validateSequence()` and never forces a jump/no-jump decision, since
+missing one is never a `finish("collision")` — only a skipped pickup.
+`collected` was already excluded from every request `/api/adventure`
+sends (the game never submits a body at all), so making the number
+genuinely count something real doesn't touch that boundary.
+
+**Tests.** `spec/adventure-game.test.ts` — pure unit coverage of jump
+physics, AABB collision (including edge-touching and bird-flying-band
+cases), finish-line/collision outcome detection, the five-appearance
+sprite-palette lookup, hand-authored sprite grid row-width consistency,
+star placement (never within the obstacle margin, alternating
+ground/air, at least 5 per run across many seeds), and the sequence-level
+fairness guarantee (checked across many seeded runs spanning the full
+speed range, not sampled once).
+`spec/adventure.test.ts`'s existing three tests (exact deterministic
+deltas, sleeping rejection, genuine concurrency) are untouched — they
+exercise `/api/adventure` directly via `fetch`, bypassing the UI
+entirely, so nothing about adding a game in front of that same endpoint
+could affect them, and all three still pass unmodified.
+
+**Explicitly manual, not automated, and verified in this session, not
+assumed:** two independent browser sessions sharing a room, confirming a
+completed adventure reaches the other session live via the existing
+unmodified SSE path; all five appearances rendering with visually
+distinct sprite palettes; desktop keyboard play and mobile tap-to-jump;
+resizing the canvas mid-run without blur; and a real no-JS browser
+session completing a full adventure through the plain fallback form with
+the overlay never rendered. Not automated: a committed accessibility
+test for the game's own controls, and behavior under a slow or
+interrupted network connection during the "Return to Commons" submit —
+stated as open limitations, not silently assumed to be fine.
+
 ## Out of scope for this deliverable (unchanged from the course's own list)
 
 No accounts/profiles, chat, voting/likes, maps, push/SMS/email

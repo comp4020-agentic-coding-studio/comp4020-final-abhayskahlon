@@ -88,6 +88,11 @@ own component following the same pattern as the other five.
   `clean`) both gives and costs something, deliberately, so one visitor's
   action changes what the next visitor should reasonably do. See the table
   in PROCESS.md Decision 3 before changing any effect or threshold.
+  `adventure` (Decisions 12 and 18) is deliberately not one of the five —
+  its own route, its own validator, never folded into `ACTIONS` — and
+  gaining a playable pixel-art interaction (Decision 18) didn't change
+  that; the server-side contract it ends in is exactly the same
+  deterministic mutation it always was.
 - `hunger`, `energy`, `happiness`, `cleanliness` — no more. All four run in
   the same direction: **higher is always better**. `hunger` means how fed
   the creature is, not how hungry — the UI labels it "Fullness" for exactly

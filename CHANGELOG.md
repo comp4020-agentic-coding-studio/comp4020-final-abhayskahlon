@@ -3,6 +3,21 @@
 What's changed, in plain terms, newest first — read live via `/patch-notes/`
 and summarised on the entry page's own "what's new in COMMONS" section.
 
+## Patch 1.8 — Adventure is now a playable pixel-art runner
+
+Sending the shared creature on an adventure now opens a short, retro
+pixel-art side-scrolling game — jump over logs, puddles, and rocks, dodge
+flying birds, playing as whichever of the five appearances the room
+currently has selected. The game itself is just the interaction: however
+the run goes, confirming "Return to Commons" produces the exact same
+shared, deterministic outcome adventure always has (happiness up, energy
+and cleanliness down), recorded in the room's history the same way every
+other action is. Nothing about the game's own score is ever sent
+anywhere. Works with a keyboard, mouse, or touch, and — since this is an
+enhancement, not a requirement — the same button still performs the
+adventure immediately if JavaScript isn't available, exactly as it always
+did.
+
 ## Patch 1.7 — a quiet suggestion of what might help next
 
 Right next to "Last action," the room view now shows at most one short,

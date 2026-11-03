@@ -42,6 +42,24 @@ whichever one is currently selected.
   `COMMONS` — nothing about its history or age was lost when rooms were
   introduced.
 
+## Adventure
+
+A sixth, shared activity alongside the five care actions — not a sixth
+action in the rules sense (it's never gated by a stat threshold the way
+`play`/`walk`/`sleep` are, and it doesn't count against that "exactly
+five" number), just a second way to interact with the same one creature.
+Sending the room's creature on an adventure opens a short, playable,
+retro pixel-art side-scrolling runner — jump over logs, puddles, and
+rocks, duck under flying birds, using whichever of the five appearances
+the room currently has selected. However the run goes, confirming "Return
+to Commons" triggers the exact same shared, deterministic outcome
+adventure always has: happiness up, energy and cleanliness down, visible
+in the room's history the same way every other action already is. The
+game itself is cosmetic — its own distance and star count are never sent
+anywhere and never change a stat or the XP awarded — and it's an
+enhancement, not a requirement: with JavaScript unavailable, the same
+button performs the adventure immediately, exactly as it always did.
+
 ## Progression
 
 Two separate, both unranked, both room-level — never a per-visitor score:

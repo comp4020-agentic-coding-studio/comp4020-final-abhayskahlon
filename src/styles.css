@@ -1042,11 +1042,13 @@ main :where(pre code) {
   color: rgba(255, 255, 255, 0.85);
 }
 
-.adventure-form {
+.adventure-form,
+.adventure-launch-button {
   margin-top: var(--space-4);
 }
 
-.adventure-form button {
+.adventure-form button,
+.adventure-launch-button {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
@@ -1062,18 +1064,21 @@ main :where(pre code) {
   transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
 }
 
-.adventure-form button svg {
+.adventure-form button svg,
+.adventure-launch-button svg {
   width: 1.1rem;
   height: 1.1rem;
   color: var(--color-accent-ink);
 }
 
-.adventure-form button:hover {
+.adventure-form button:hover,
+.adventure-launch-button:hover {
   border-color: var(--color-accent);
   background: #fff;
 }
 
-.adventure-form button:active {
+.adventure-form button:active,
+.adventure-launch-button:active {
   transform: scale(0.96);
 }
 

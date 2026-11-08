@@ -1802,3 +1802,17 @@ Each entry links the commit that carried out the decision it's filed under.
   filled dark blob even after the puppy redesign [`e782154`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/e7821545437eb5a47ed2458b6d33e94d11bc15eb).
 - Decision 17 (contextual care suggestions) — `src/components/
   suggestions.ts` and `spec/care-suggestion.test.ts`: [`e0822c9`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/e0822c9dfdfba58c7e2dcda2617cd4fd3d8998ce)
+- Decision 18 (the Adventure runner) — `src/components/adventureGame.ts`
+  and `AdventureGame.astro` (hand-authored pixel-grid sprites for all five
+  appearances, obstacles, parallax environment, collectible stars,
+  sequence-level obstacle fairness, pause/resume, auto-pause on
+  tab-hidden, and the genuine no-JS fallback), `spec/adventure-game.test.ts`,
+  and the six real rendering bugs documented in Decision 18's own text
+  above (sprite legibility, an invisible collision pose, a self-starving
+  star generator, an invisible sparkle color, a sky gap between the hill
+  band and the ground): [`522c7a0`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/522c7a05add189d2af9b89b893cbb6172a1c60b9)
+- Incident 4 (the sleep countdown was a second, un-resynced clock) —
+  `attachActivityCountdown()`'s own resync-on-zero and the
+  `visibilitychange` resync in `src/pages/index.astro`, with
+  `spec/activity-countdown-resync.test.ts` confirmed to fail against the
+  pre-fix source and pass against the fix: [`20dcb15`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/20dcb15b5a456c300a41d46336d905ee914b4fe6)

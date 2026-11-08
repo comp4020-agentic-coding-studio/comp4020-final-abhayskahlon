@@ -3,6 +3,19 @@
 What's changed, in plain terms, newest first — read live via `/patch-notes/`
 and summarised on the entry page's own "what's new in COMMONS" section.
 
+## Patch 1.9 — the sleep countdown now wakes the creature up on its own
+
+Fixed two real bugs found via playtesting: the creature previously never
+woke up on its own once its sleep countdown reached zero — the badge got
+stuck reading "is waking up…" until someone performed an unrelated action
+or reloaded the page — and two browser tabs open on the same room could
+show different remaining-seconds numbers for the exact same sleep. Both
+were the same underlying gap: the on-screen countdown was a separate
+clock that never checked back in with the server. It now does, the moment
+it reaches zero and whenever a backgrounded tab is looked at again, so
+the creature reliably wakes itself up and every open tab agrees on the
+same number.
+
 ## Patch 1.8 — Adventure is now a playable pixel-art runner
 
 Sending the shared creature on an adventure now opens a short, retro

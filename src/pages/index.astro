@@ -184,13 +184,20 @@ const activityPhrase =
                     here). aria-hidden: purely decorative, adds no
                     information a screen reader visitor needs — the
                     heading right after it already says where this is. */}
+                {/* aria-hidden stays even with real text inside now: the
+                    name is purely decorative lockup here, not the page's
+                    actual heading — h1#entry-heading right below is still
+                    the one real "COMMONS" a screen reader visitor hears,
+                    so this would otherwise just announce the same word
+                    twice in a row with no added information. */}
                 <div class="entry-sky" aria-hidden="true">
                   <div class="entry-cloud entry-cloud-1"></div>
                   <div class="entry-cloud entry-cloud-2"></div>
                   <div class="entry-cloud entry-cloud-3"></div>
+                  <span class="entry-sky-title">COMMONS</span>
                 </div>
 
-                <h1 id="entry-heading">Welcome to COMMONS</h1>
+                <h1 id="entry-heading">COMMONS</h1>
                 <p class="intro">
                   One shared {CREATURE_NAME}, looked after by everyone in the same room — not a separate pet for each
                   of you.

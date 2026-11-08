@@ -383,6 +383,29 @@ main :where(pre code) {
   background: linear-gradient(180deg, #bfe6fb 0%, #d9f0fc 70%, #eaf7fb 100%);
 }
 
+/* The "COMMONS" lockup sitting inside the sky strip — centered, above the
+   drifting clouds (an explicit z-index, since .entry-cloud is also
+   `position: absolute` in the same stacking context and DOM order alone
+   wouldn't reliably keep this on top once a cloud drifts past). The
+   lighter ink + soft white text-shadow keeps it readable against the sky
+   gradient without needing an opaque backing plate across the whole
+   strip, which would hide the clouds behind it instead of letting them
+   drift past. */
+.entry-sky-title {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(1.5rem, 5vw, 2rem);
+  letter-spacing: 0.04em;
+  color: var(--color-accent-ink);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
 /* Each cloud: three offset, hard-edged rectangles (no border-radius —
    deliberately blocky/pixel-art, matching every other sprite in this
    project, never a smooth CSS-native cloud shape) stacked into one

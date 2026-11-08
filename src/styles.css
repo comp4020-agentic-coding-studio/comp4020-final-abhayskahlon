@@ -364,6 +364,75 @@ main :where(pre code) {
   }
 }
 
+/* ---------- entry sky strip: a small, contained animated accent --------
+   Pure CSS, no image/video asset — see index.astro's own comment at the
+   call site for why. A fixed-height band with a sky gradient and three
+   blocky, stepped pixel-art clouds (the same three-rectangle silhouette
+   adventureGame.ts's own CLOUDS/fillRect drawing uses, translated from
+   canvas pixels to CSS box shapes), each drifting left at its own slow,
+   looping pace via `animate-drift`. `overflow: hidden` is load-bearing:
+   without it, a cloud mid-drift would spill out past the rounded corners
+   below into the rest of the welcome column. */
+.entry-sky {
+  position: relative;
+  width: 100%;
+  height: 5.5rem;
+  margin-bottom: var(--space-4);
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, #bfe6fb 0%, #d9f0fc 70%, #eaf7fb 100%);
+}
+
+/* Each cloud: three offset, hard-edged rectangles (no border-radius —
+   deliberately blocky/pixel-art, matching every other sprite in this
+   project, never a smooth CSS-native cloud shape) stacked into one
+   stepped silhouette via box-shadow, so a single element can draw the
+   whole shape without three separate DOM nodes per cloud. */
+.entry-cloud {
+  position: absolute;
+  top: 0;
+  width: 1.5rem;
+  height: 0.65rem;
+  background: #ffffff;
+  box-shadow:
+    0.5rem -0.4rem 0 0 #ffffff,
+    -0.4rem 0.3rem 0 0 #ffffff;
+}
+
+.entry-cloud-1 {
+  top: 0.6rem;
+  animation: entry-cloud-drift 18s linear infinite;
+}
+
+.entry-cloud-2 {
+  top: 2.2rem;
+  width: 1.1rem;
+  height: 0.5rem;
+  animation: entry-cloud-drift 24s linear infinite;
+  animation-delay: -8s; /* starts already mid-drift, so all three never line up */
+}
+
+.entry-cloud-3 {
+  top: 1.3rem;
+  width: 1.8rem;
+  height: 0.75rem;
+  animation: entry-cloud-drift 30s linear infinite;
+  animation-delay: -15s;
+}
+
+/* Drifts fully across a wide band (120% of a generous max container
+   width) and loops — `left: -10%` to `110%` rather than 0%-to-100% so a
+   cloud fully clears both edges before resetting, instead of visibly
+   snapping back into view still on-screen. */
+@keyframes entry-cloud-drift {
+  from {
+    left: -10%;
+  }
+  to {
+    left: 110%;
+  }
+}
+
 /* ---------- welcome column: identity, the real Milo, what this is ------ */
 
 .entry-welcome {

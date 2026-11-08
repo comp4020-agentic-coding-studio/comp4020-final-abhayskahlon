@@ -165,6 +165,31 @@ const activityPhrase =
           <div class="entry-page">
             <div class="entry-shell">
               <div class="entry-welcome">
+                {/* A small, contained decorative accent — not a page
+                    takeover. This project's own body background is
+                    deliberately "a restrained warm gradient rather than
+                    scenery" (src/styles.css's own comment); a full-bleed
+                    animated sky behind the whole entry page would reverse
+                    that choice. Pure CSS, no image or video asset (this
+                    repo has never had a public/ or src/assets/ directory —
+                    see PROCESS.md, Decision 18 — and a video file would be
+                    the first one), built the same "small shapes as data"
+                    way adventureGame.ts's own pixel clouds are, just
+                    expressed as box-shadow-stacked pixels instead of
+                    canvas fillRect calls, since this is a static decorative
+                    strip, not an interactive game surface. Respects the
+                    site-wide prefers-reduced-motion override already in
+                    place below (it neutralises any animation-duration,
+                    this one included, with no extra condition needed
+                    here). aria-hidden: purely decorative, adds no
+                    information a screen reader visitor needs — the
+                    heading right after it already says where this is. */}
+                <div class="entry-sky" aria-hidden="true">
+                  <div class="entry-cloud entry-cloud-1"></div>
+                  <div class="entry-cloud entry-cloud-2"></div>
+                  <div class="entry-cloud entry-cloud-3"></div>
+                </div>
+
                 <h1 id="entry-heading">Welcome to COMMONS</h1>
                 <p class="intro">
                   One shared {CREATURE_NAME}, looked after by everyone in the same room — not a separate pet for each

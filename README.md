@@ -1,171 +1,36 @@
-# COMMONS
+# COMMONS — What Does Good Mean?
 
-**Live:** https://comp4020-final-abhayskahlon.fly.dev/
+**Live application:** https://comp4020-final-abhayskahlon.fly.dev/
 
-One creature. Not one each — one, shared by everyone currently in the same
-room. A room is an explicit, chosen scope: a visitor opens the site, enters
-a name, and either hosts a brand-new room (getting a short code back) or
-joins an existing one by typing that code. Everyone in the same room shares
-that room's one creature — a stranger in there can feed, play with, walk,
-clean, or put it to sleep, and the next person in that room sees exactly
-what the one before them left behind: its current needs, a short,
-chronological record of who did what, and — read straight off those same
-current needs, never a new mechanic of its own — a quiet suggestion of
-what might help next. A different room has its own
-completely separate creature, history, and live updates — nothing one room
-does is visible to another. There's no login — a lightweight, anonymous
-cookie is enough to tell visitors in the same room apart — and most actions
-both help the creature and cost something (cleaning is the one free
-action), so one person's choice changes what the next person in that room
-should reasonably do next.
+COMMONS explores what happens when responsibility for a virtual creature is shared rather than individual. Each room has one persistent creature. Visitors can contribute care, and everyone in that room sees the same condition and history. One person's actions therefore affect what the next person encounters.
 
-The creature can look like one of five fixed, hand-drawn appearances —
-Milo (the default), Plip, Bella, Simbaa, or Oliver — switched by any
-visitor in the room. It's purely cosmetic: switching never resets or
-changes stats, progress, or history, the same shared way a hat or scarf
-already worked before appearances existed. Everyone in the room sees
-whichever one is currently selected.
+## What "good" means here
 
-## Rooms
+A good shared-care system makes collective responsibility visible without turning care into competition.
 
-- **Host a room** from the entry screen with just a name; the server
-  generates a short, unambiguous 6-character code (e.g. `4Q7K2P`) for that
-  room and creates its own fresh Milo.
-- **Join a room** with a name and an existing room's code — any number of
-  visitors can join the same room and share its Milo.
-- A room's host is shown ("Hosted by X") for attribution only — they have no
-  extra powers over Milo compared to anyone else in the room.
-- Joining or hosting always moves a visitor into that room, overwriting
-  whichever room they were in before; `/?switch=1` reopens the entry screen
-  to join or host a different one.
-- The original pre-rooms Milo still exists, as a room with the fixed code
-  `COMMONS` — nothing about its history or age was lost when rooms were
-  introduced.
+This definition guards against two opposing problems. The first is invisibility: when people cannot see what others have contributed, shared responsibility can become nobody's responsibility. The second is overcorrection: making contributions competitive through leaderboards or individual scores can shift attention away from caring for the shared creature and towards personal ranking.
 
-## Adventure
+COMMONS attempts to sit between these extremes. Its chronological care history shows who acted and what they did, providing visibility and attribution without ranking visitors. Progression is also shared at room level: milestones and levels reflect the group's accumulated activity, not individual performance. The intention is to make contributions recognisable while keeping the creature, rather than the contributors, at the centre.
 
-A sixth, shared activity alongside the five care actions — not a sixth
-action in the rules sense (it's never gated by a stat threshold the way
-`play`/`walk`/`sleep` are, and it doesn't count against that "exactly
-five" number), just a second way to interact with the same one creature.
-Sending the room's creature on an adventure opens a short, playable,
-retro pixel-art side-scrolling runner — jump over logs, puddles, and
-rocks, duck under flying birds, using whichever of the five appearances
-the room currently has selected. However the run goes, confirming "Return
-to Commons" triggers the exact same shared, deterministic outcome
-adventure always has: happiness up, energy and cleanliness down, visible
-in the room's history the same way every other action already is. The
-game itself is cosmetic — its own distance and star count are never sent
-anywhere and never change a stat or the XP awarded — and it's an
-enhancement, not a requirement: with JavaScript unavailable, the same
-button performs the adventure immediately, exactly as it always did.
+## What grounds this definition
 
-## Progression
+This design position draws on research into awareness, coordination and social behaviour.
 
-Two separate, both unranked, both room-level — never a per-visitor score:
+Erickson and Kellogg's concept of social translucence argues that visibility, awareness and accountability can support social coordination (Erickson & Kellogg, 2000). COMMONS applies this through its visible care history and shared state: visitors can understand what has happened without requiring an authority to coordinate them.
 
-- **Milestones**: a lifetime count of every successful care action this
-  room has ever taken, with a short flavor-text label at five points along
-  the way (10, 50, 100, 250, 500). An open-ended "how much has this room
-  done together, total."
-- **Level**: a second, capped arc (levels 1 through 5) that unlocks a
-  growing set of cosmetics as the room's shared total grows, ending in a
-  golden crown at level 5. A closed-ended "how far along is this room,"
-  distinct from the open-ended milestone count above.
+Dourish and Bellotti (1992) examine awareness and coordination in shared workspaces. Their work helped ground the decision to make awareness a byproduct of interaction rather than a separate reporting task. Visitors do not need to announce that they have cared for the creature; the shared history records the action for others to see.
 
-Both move together — the same successful action feeds both — but neither
-is derived from the other, and neither is ever attributed to which
-visitor contributed what.
+Latané, Williams and Harkins (1979) examine social loafing and how individual effort can become less visible in group settings. This informed the decision to make contributions attributable. However, attribution does not become a competition: the history identifies actions without calculating who contributed the most.
 
-## What "good" means here (v1)
+Finally, Turkle's discussion of relational artifacts in Alone Together (2011) provides a useful contrast with the familiar Tamagotchi-like model of an individual caring for a dependent digital creature. COMMONS explores how that relationship changes when the creature belongs to a group.
 
-*A good shared-care system makes collective responsibility visible without
-turning care into competition.*
+Together, these sources inform a design that makes shared activity visible while avoiding individual rankings. Care history provides immediate awareness; room-level progression reflects cumulative participation; and cosmetic choices let visitors personalise the creature without creating separate ownership.
 
-That's a first, rough definition, guarding against two failures at once.
-The first is invisibility: if nobody can see what anyone else did, shared
-responsibility quietly becomes nobody's responsibility — the creature just
-degrades, and no one in particular is accountable. The second is the
-opposite overcorrection: make that visibility competitive — a leaderboard,
-a score, "most caring visitor" — and the shared object stops being the
-point; the ranking is. COMMONS sits between those: a visible, named,
-chronological history of who acted, with no ranking attached at all.
+This is a first definition, not a claim that the problem is solved. Whether visitors actually experience COMMONS as shared responsibility, rather than an individual pet with a visitor log, remains something to evaluate.
 
-## What grounds this
+## References
 
-A few things we actually read while deciding this, not retrofitted after:
-
-- Erickson & Kellogg, *"Social Translucence: An Approach to Designing
-  Systems that Support Social Processes"* (ACM TOCHI, 2000) — the argument
-  that visibility, awareness and accountability are what let people
-  coordinate around something shared without needing an explicit authority.
-  The "last action by X" line and the capped history are a small, direct
-  attempt at exactly that: visible and attributable, nothing more.
-- Dourish & Bellotti, *"Awareness and Coordination in Shared Workspaces"*
-  (CSCW, 1992) — awareness gathered passively from the shared object itself,
-  versus awareness that has to be explicitly broadcast (and so penalises
-  whoever generates it). COMMONS has no "I did X!" announcement system; the
-  history is a byproduct of acting, read passively by whoever looks.
-- Latané, Williams & Harkins, *"Many Hands Make Light the Work"* (1979), on
-  social loafing — shared effort, left unmeasured, tends to collapse toward
-  nobody's effort. That collapse, not competition for its own sake, is the
-  actual failure our definition is trying to name.
-- Turkle's writing on "relational artifacts" (*Alone Together*) discusses
-  the Tamagotchi-shaped genre we're deliberately not just cloning — a
-  private, individual attachment to a small dependent creature. COMMONS asks
-  what happens when that attachment has to be shared instead.
-
-## Why these features, together
-
-Care history, milestones, XP/levels, appearances, and contextual
-suggestions are five separate mechanisms, but all five answer the same
-question from a different angle, not five different questions. Care
-history (above) makes the *instant* legible — who acted, what they did,
-when. Milestones and XP/levels make the *cumulative* legible — what this
-room has built together over its whole lifetime, read as a shared total
-nobody owns individually, never as a comparison between the people who
-contributed to it. Appearances and contextual suggestions are the
-cosmetic and advisory layer riding on top of that same visible, shared
-state — a different look for the one creature everyone already sees, and
-a plain-language reading of numbers already on the page — neither is a
-second currency, a per-visitor score, or a new thing to manage. All five
-pieces read off the same underlying state and the same session/room
-scoping; none of them exists to be collected, ranked, or claimed by one
-visitor over another.
-
-What was deliberately left out, for the same reason: a shared
-claim/release system for who's "doing" the next care action, and a
-suggested daily schedule, were both considered and set aside, not for
-being infeasible but for widening the shared-care idea into a task-
-coordination one — a different concept, not a deeper version of this one
-(PROCESS.md, Decision 17).
-
-## What we chose not to build
-
-Accounts, chat, leaderboards, shops, inventories, AI, notifications, maps,
-an admin dashboard. No score for being the visitor who acted most — the
-history is unranked, on purpose, and so are both of the room-level
-progress tracks described above. Rooms let multiple *groups* each have
-their own creature, isolated from every other group — not a second
-creature within one room, not a per-user pet; the five selectable
-appearances are five looks for that one creature, not five creatures.
-
-## Tested vs. judged
-
-Tested automatically, every time this ships: the four needs never leave
-their 0–100 bound; an action the current state doesn't allow changes
-nothing; care history is attributed to the session that actually acted, and
-a rejected action is never recorded; two different visitors get distinct
-identities; a change one person makes reaches every other open tab in the
-same room within about a second, via a signal that carries no copy of the
-state itself — only SQLite does; a room's creature, history, and live
-updates are never visible to a different room; and every care action and
-room event — success or rejection — is durably recorded server-side,
-attributed to a non-reversible per-session tag, never the visitor's raw
-session credential.
-
-Left to a person, because no test can hold it: whether this actually reads
-as shared responsibility rather than a solo pet with a visitor log attached,
-whether the history feels informative rather than watched, and whether this
-definition of good is itself any good. It's a first version, meant to
-change as the week does.
+- Dourish, P. & Bellotti, V. (1992). Awareness and Coordination in Shared Workspaces. Proceedings of the ACM Conference on Computer-Supported Cooperative Work.
+- Erickson, T. & Kellogg, W. A. (2000). Social Translucence: An Approach to Designing Systems that Support Social Processes. ACM Transactions on Computer-Human Interaction.
+- Latané, B., Williams, K. & Harkins, S. (1979). Many Hands Make Light the Work: The Causes and Consequences of Social Loafing. Journal of Personality and Social Psychology.
+- Turkle, S. (2011). Alone Together: Why We Expect More from Technology and Less from Each Other. Basic Books.

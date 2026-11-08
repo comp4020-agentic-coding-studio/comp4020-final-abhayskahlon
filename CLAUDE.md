@@ -1,51 +1,50 @@
 # COMMONS — project rules
 
 A single shared digital creature, cared for collectively by everyone
-currently using the same room. Since crit 10 (PROCESS.md, Decision 13),
-"the room" is an explicit, chosen scope — a visitor joins one by code or
-hosts a new one — rather than the whole deployment; within a room, nothing
-changed: one creature, shared, not one per user. The central design
-question — what happens when responsibility for one persistent being is
-shared across several people — and every decision behind the current shape
-of the app lives in `PROCESS.md`, including three real bugs found via human
-playtesting and how each was actually diagnosed and fixed ("Incidents found
-via human playtesting"), the crit 10 pivot to dedicated rooms (Decision 13,
-`docs/adr/0002-multi-room-identity-and-access-control.md`), and the later
-addition of five selectable appearances and a shared level/XP track
-(Decisions 15 and 16). Read PROCESS.md before changing the schema, the
-action rules, the room/identity model, or the real-time mechanism; these
-rules summarise it for the agent, not replace it.
+currently using the same room. Since the rooms pivot (`ADR 0002,
+docs/adr/0002-multi-room-identity-and-access-control.md`), "the room" is an
+explicit, chosen scope — a visitor joins one by code or hosts a new one —
+rather than the whole deployment; within a room, nothing changed: one
+creature, shared, not one per user. The central design question — what
+happens when responsibility for one persistent being is shared across
+several people — and the project's current account of its stack, agent
+workflow and real bugs found via human playtesting live in `PROCESS.md`;
+the deeper decision-by-decision history behind today's shape lives in the
+ADRs under `docs/adr/` and in git history (each commit message explains
+its own reasoning). Read PROCESS.md before changing the schema, the action
+rules, the room/identity model, or the real-time mechanism; these rules
+summarise the current state for the agent, not replace it.
 
 The room's one shared creature can look like one of five fixed, authored
 appearances — Milo (the default), Plip, Bella, Simbaa, or Oliver
 (`src/components/{Milo,Plip,Bella,Simbaa,Oliver}.astro`, dispatched through
 `CreatureDisplay.astro`) — stored in `creature.appearance` and switched via
-`/api/appearance` (PROCESS.md, Decision 15). This is **not** a naming
-feature: a visitor picks one of exactly five server-validated, pre-drawn
-looks, the same shared, cosmetic mechanism `hat`/`neckwear`/`glasses`
-already use — never free text, never a per-visitor choice, never a second
-creature. Every visitor in the room sees the same appearance, and
-switching it never touches stats, xp, milestones, or history. Don't add a
-free-text naming system; don't add a sixth appearance without updating
-`APPEARANCES`/`APPEARANCE_LABELS` (`src/lib/creature.ts`) and giving it its
-own component following the same pattern as the other five.
+`/api/appearance`. This is **not** a naming feature: a visitor picks one of
+exactly five server-validated, pre-drawn looks, the same shared, cosmetic
+mechanism `hat`/`neckwear`/`glasses` already use — never free text, never a
+per-visitor choice, never a second creature. Every visitor in the room sees
+the same appearance, and switching it never touches stats, xp, milestones,
+or history. Don't add a free-text naming system; don't add a sixth
+appearance without updating `APPEARANCES`/`APPEARANCE_LABELS`
+(`src/lib/creature.ts`) and giving it its own component following the same
+pattern as the other five.
 
 ## The database is the only source of truth
 
 - SQLite (via Drizzle, `src/lib/db.ts`) holds the entire persistent state:
   `rooms`, `creature` (one row **per room**, `roomId` unique — including
-  `appearance` and `xp`, Decisions 15/16, still exactly one row), `sessions`
+  `appearance` and `xp`, still exactly one row), `sessions`
   (each with a `roomId` — null until a visitor joins or hosts),
   `care_events` (each row's `roomId` AND `appearance` captured at action
   time, independent of the session's *current* room or the room's *current*
   appearance), and `log_events` (a bounded, durable record of every care
-  action and room event, success and rejection alike — see PROCESS.md,
-  Decision 13's log-retention follow-up; its `actor` column is always a
+  action and room event, success and rejection alike — a follow-up to the
+  rooms pivot, `ADR 0002`; its `actor` column is always a
   one-way hash of the session id, from `src/lib/log.ts`'s `actorTag()`,
   never the raw id). Every creature read or write is scoped by `roomId`,
   and that `roomId` is always derived from the trusted session cookie
-  server-side — never a client-supplied field (PROCESS.md, Decision 13;
-  `docs/adr/0002-multi-room-identity-and-access-control.md`).
+  server-side — never a client-supplied field (`ADR 0002,
+  docs/adr/0002-multi-room-identity-and-access-control.md`).
 - No feature may use an in-memory array, a module-level variable, or
   `localStorage` as its primary record. The in-memory SSE client set in
   `src/lib/sse.ts` is the one deliberate exception, and it is never a record
@@ -58,16 +57,16 @@ own component following the same pattern as the other five.
 - Every action (`feed`, `play`, `walk`, `clean`, `sleep`) is applied inside a
   single `db.transaction(...)` in `src/lib/creature.ts` / `src/lib/db.ts`,
   with no `await` between reading the current row and writing the new one.
-  This is what makes concurrent requests deterministic (see PROCESS.md,
-  Decision 4) — don't introduce an `await` inside that critical section
-  without re-reading that decision first.
+  This is what makes concurrent requests deterministic (see `ADR 0001,
+  docs/adr/0001-concurrent-care-and-realtime-sync.md`) — don't introduce an
+  `await` inside that critical section without re-reading that ADR first.
 - An action the current state doesn't allow (e.g. `play` with energy below
   the threshold, `sleep` while already asleep) is rejected with a `4xx`
   response and a reason string — never silently clamped into something
   valid, never coerced, never dropped without a response the caller can see.
   A rejection never creates a `care_events` row and never changes stats or
-  `last_actor_session_id`. The one narrow exception, added after Incident 2
-  in PROCESS.md: `resolveAndSync()` may still write `activity`/
+  `last_actor_session_id`. The one narrow exception, found via playtesting:
+  `resolveAndSync()` may still write `activity`/
   `activity_until` during a rejected action's validation, but only to
   correct a sleep cooldown that has already, unconditionally expired —
   that's housekeeping matching what the very next read would do regardless,
@@ -75,23 +74,23 @@ own component following the same pattern as the other five.
 - The client never invents, guesses, or reconstructs a rejection reason:
   `readRejectionReason()` in `src/pages/index.astro` only ever shows
   exactly what `/api/actions` sent, and refuses to render a response whose
-  content-type is HTML (see PROCESS.md, Incident 1) rather than ever
-  display raw markup as if it were a reason.
+  content-type is HTML (a real bug found via playtesting — see PROCESS.md)
+  rather than ever display raw markup as if it were a reason.
 - All four stats always stay inside `[0, 100]`. `health`/condition is never
   stored or mutated directly — it is computed from the other four on every
-  read (see PROCESS.md, Decision 2). Don't add a `health` column or a
-  transition rule that writes to it.
+  read. Don't add a `health` column or a transition rule that writes to it.
 
 ## Exactly five actions, exactly four stats
 
 - `feed`, `play`, `walk`, `clean`, `sleep` — no more. Each (other than
   `clean`) both gives and costs something, deliberately, so one visitor's
-  action changes what the next visitor should reasonably do. See the table
-  in PROCESS.md Decision 3 before changing any effect or threshold.
-  `adventure` (Decisions 12 and 18) is deliberately not one of the five —
+  action changes what the next visitor should reasonably do. Check
+  `applyAction` in `src/lib/creature.ts` for the exact effect/threshold
+  table before changing any of it.
+  `adventure` is deliberately not one of the five —
   its own route, its own validator, never folded into `ACTIONS` — and
-  gaining a playable pixel-art interaction (Decision 18) didn't change
-  that; the server-side contract it ends in is exactly the same
+  gaining a playable pixel-art interaction (the Adventure runner) didn't
+  change that; the server-side contract it ends in is exactly the same
   deterministic mutation it always was.
 - `hunger`, `energy`, `happiness`, `cleanliness` — no more. All four run in
   the same direction: **higher is always better**. `hunger` means how fed
@@ -103,20 +102,19 @@ own component following the same pattern as the other five.
 
 - `creature.xp` (cumulative, never decremented) and a **derived, never
   stored** level 1–5 (`getProgression()`, `src/lib/creature.ts`) are a
-  second, independent progress axis alongside Decision 14's room-level
+  second, independent progress axis alongside the room's lifetime
   milestone total (`total_care_actions`) — not a replacement for it, and
   not merged with it. Don't add a `level` column; compute it from `xp`
   every time, the same "derive it, never store it" rule `health` already
-  follows (Decision 2).
+  follows.
 - Awarded only for a genuinely successful `feed`/`play`/`walk`/`clean`/
   `sleep`/`adventure` (`XP_PER_ACTION`, a flat amount — never varied per
   action), inside the same transaction that increments
   `total_care_actions`. Never for a rejection, never for a wardrobe or
-  appearance change (PROCESS.md, Decision 16).
+  appearance change.
 - This is still room-level and unranked, same as every other shared field
   here: `xp` is never joined against `sessions`, never shown per-visitor,
-  never a leaderboard — don't change that (PROCESS.md, Decision 6's
-  reasoning applies identically here).
+  never a leaderboard — don't change that.
 - Accessories (`ACCESSORIES` in `src/lib/creature.ts`) are gated by the
   room's current level and, for a few items, by its current appearance.
   There's no separate "unlocked" table: availability is always a pure
@@ -130,7 +128,7 @@ own component following the same pattern as the other five.
 
 - `src/lib/sse.ts` broadcasts to open `/api/events` connections after a
   mutation commits — on success only; a rejection never reaches
-  `broadcastUpdate()`. Since Decision 13, broadcasting is **per room**
+  `broadcastUpdate()`. Since the rooms pivot, broadcasting is **per room**
   (`broadcastUpdate(roomId)`, a `Map<roomId, Set<client>>`, not one flat
   `Set`): an update in one room must never reach a client connected to a
   different room, since the mere existence of an event is itself a signal
@@ -142,17 +140,18 @@ own component following the same pattern as the other five.
   re-fetch happens, and it always swaps the *complete* `#live-state` (stats,
   condition, activity, last action, and history together) — never a
   subset. It runs after an SSE `update` event for every other open tab,
-  and — since Incident 1 in PROCESS.md — after the actor's own action too,
+  and — after a real bug found via playtesting where the actor's own tab
+  could silently go stale — after the actor's own action too,
   on **both** success and rejection: a rejection can mean this tab's own
   view was stale (it missed an event), and refreshing is what makes that
   visible instead of leaving a stale badge next to a reason that
   contradicts it. Don't special-case the actor's own tab back to a
   different mechanism (a full `location.reload()`, a partial DOM patch) —
   that divergence between "my own action" and "someone else's action,
-  seen live" is exactly what caused Incident 1.
+  seen live" is exactly what caused that bug.
 - Don't add polling or WebSockets alongside this without a new decision
-  record explaining why SSE stopped being sufficient (PROCESS.md Decision
-  5).
+  record explaining why SSE stopped being sufficient (`ADR 0001,
+  docs/adr/0001-concurrent-care-and-realtime-sync.md`).
 
 ## Never read `form.action` — use `getAttribute("action")`
 
@@ -161,10 +160,10 @@ own component following the same pattern as the other five.
   `HTMLFormElement`'s own built-in `action` property in real browsers:
   `form.action` resolves to the input element itself, not the URL string,
   and `fetch(form.action, …)` silently stringifies it to
-  `"[object HTMLInputElement]"` — a real production bug (PROCESS.md,
-  Incident 3), found only by a human clicking a real button, never by any
-  scripted test, because every script calls `fetch()` with a hand-built URL
-  string and never touches a real DOM form.
+  `"[object HTMLInputElement]"` — a real production bug (see PROCESS.md
+  and commit `a8d100c`), found only by a human clicking a real button,
+  never by any scripted test, because every script calls `fetch()` with a
+  hand-built URL string and never touches a real DOM form.
 - The fix, `form.getAttribute("action")`, is what's in the code now and
   must stay. Don't revert to `form.action`. Don't rename the `"action"`
   input to dodge this either — the server's whole validated vocabulary
@@ -183,8 +182,8 @@ own component following the same pattern as the other five.
 - `src/lib/session.ts` mints a random token and a display label on first
   visit. No password, no login form, no identity that persists across
   browsers. Don't add authentication — it's explicitly out of scope for this
-  deliverable (PROCESS.md, "Out of scope").
-- Since Decision 13, a session also carries a `roomId` (null until it joins
+  deliverable (see "Out of scope" below).
+- Since the rooms pivot, a session also carries a `roomId` (null until it joins
   or hosts a room). That value is set in exactly two places —
   `hostRoom()`/`joinRoom()` in `src/lib/db.ts` — and every mutating route
   reads it from the session, never from a client-supplied field. Don't add
@@ -221,26 +220,28 @@ own component following the same pattern as the other five.
   fix, it's a regression.
 - Production real-time behaviour (latency, buffering, reconnect, autostop)
   was verified against the actual Fly deployment, not assumed from
-  localhost — see PROCESS.md, Decision 5, "Verified against the real
-  deployment."
+  localhost (`ADR 0001, docs/adr/0001-concurrent-care-and-realtime-sync.md`,
+  "Verified against the real deployment").
 - `spec/activity-resolution.test.ts` (its own instance, `SLEEP_COOLDOWN_MS`
-  overridden short) proves the consistency property behind Incident 2:
-  once a sleep cooldown has genuinely passed, the very next action
+  overridden short) proves a real bug's fix holds: once a sleep cooldown
+  has genuinely passed, the very next action
   succeeds with no GET in between, and a later rejection names the
   actually-applicable rule (e.g. "too hungry to sleep"), never a
   stale "already asleep".
-- `spec/action-form-url.test.ts` guards Incident 3 (see "Never read
-  `form.action`" above) — the one spec file here that constructs a real
-  DOM form element rather than only calling `fetch()` with a hand-built
-  URL string, and the only one that can catch this class of bug at all.
-- `spec/activity-countdown-resync.test.ts` guards Incident 4 (PROCESS.md)
-  — a static source check, the same kind `action-form-url.test.ts` uses,
-  since this is real browser `setInterval`/`visibilitychange` timing
-  jsdom doesn't meaningfully execute. Asserts the countdown's own `tick()`
+- `spec/action-form-url.test.ts` guards the `form.action` shadowing bug
+  (see "Never read `form.action`" above) — the one spec file here that
+  constructs a real DOM form element rather than only calling `fetch()`
+  with a hand-built URL string, and the only one that can catch this
+  class of bug at all.
+- `spec/activity-countdown-resync.test.ts` guards a real bug found via
+  playtesting — a static source check, the same kind
+  `action-form-url.test.ts` uses, since this is real browser
+  `setInterval`/`visibilitychange` timing jsdom doesn't meaningfully
+  execute. Asserts the countdown's own `tick()`
   calls `refreshLiveState()` once it reaches zero (so the creature wakes
   itself up without requiring an unrelated action first) and that a
   `visibilitychange` listener resyncs a backgrounded tab on return.
-- `spec/activity-countdown.test.ts` guards Incident 4's follow-up — the
+- `spec/activity-countdown.test.ts` guards that same bug's follow-up — the
   countdown trusting the visitor's own, possibly wrong, system clock
   (reported as "19s" shown for an 8-second sleep). Unlike the resync fix
   above, this bug is pure arithmetic once extracted
@@ -263,17 +264,17 @@ inventories, or AI. See PROCESS.md for the one idea (a non-competitive
 than rejected outright.
 
 "Multiple creatures" is no longer on this list as a blanket rule — see
-PROCESS.md, Decision 13. A room still has exactly one shared creature, no
-per-user creature, no per-user ownership; what's allowed is multiple
-*rooms*, each isolated, each with its own single creature. Don't read this
-as license to add a second creature within one room, a per-user pet, or
-anything else this list otherwise still rules out.
+`ADR 0002, docs/adr/0002-multi-room-identity-and-access-control.md`. A room
+still has exactly one shared creature, no per-user creature, no per-user
+ownership; what's allowed is multiple *rooms*, each isolated, each with
+its own single creature. Don't read this as license to add a second
+creature within one room, a per-user pet, or anything else this list
+otherwise still rules out.
 
-"Achievements" and "leaderboards" are, and remain, read the way Decision
-14 already established and Decision 16 confirms again: ruled out only in
-the sense of ranking one *visitor* against another. The room-level,
-unranked milestone total (Decision 14) and the room-level, unranked XP/
-level track with its level-gated cosmetics (Decision 16) are both the
+"Achievements" and "leaderboards" are, and remain, ruled out only in the
+sense of ranking one *visitor* against another. The room-level,
+unranked milestone total and the room-level, unranked XP/
+level track with its level-gated cosmetics are both the
 shared, collective-progress shape this line was never written to forbid —
 neither is ever joined against `sessions`, shown per-visitor, or usable to
 compare one visitor's contribution to another's. Don't read either as

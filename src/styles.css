@@ -372,15 +372,62 @@ main :where(pre code) {
    canvas pixels to CSS box shapes), each drifting left at its own slow,
    looping pace via `animate-drift`. `overflow: hidden` is load-bearing:
    without it, a cloud mid-drift would spill out past the rounded corners
-   below into the rest of the welcome column. */
+   below into the rest of the welcome column.
+
+   A sibling of .entry-shell now (index.astro), not nested inside
+   .entry-welcome, so its own 100% width is .entry-page's full width — the
+   same width .entry-shell's two columns together span — rather than just
+   one column's share of it; that's the "double width" the entry-welcome
+   placement couldn't give it since a flex column there is capped at half
+   the row from the 64rem breakpoint down. Taller too, both for its own
+   presence at that width and to leave room for .entry-grass along the
+   bottom edge. */
 .entry-sky {
   position: relative;
   width: 100%;
-  height: 5.5rem;
-  margin-bottom: var(--space-4);
+  height: 9rem;
+  margin-bottom: var(--space-6);
   overflow: hidden;
   border-radius: var(--radius-md);
   background: linear-gradient(180deg, #bfe6fb 0%, #d9f0fc 70%, #eaf7fb 100%);
+}
+
+@media (min-width: 64rem) {
+  .entry-sky {
+    height: 11rem;
+  }
+}
+
+/* A low pixel-art grass strip along the banner's bottom edge — the same
+   "stepped, not smooth" silhouette language as adventureGame.ts's own
+   ground tufts (box-shadow-stacked rectangles standing in for canvas
+   fillRect calls, same reasoning as .entry-cloud above). One solid green
+   band plus a row of narrow blade shapes repeated via a `background-image`
+   gradient pattern, so the jagged tuft line tiles cleanly across the full
+   width without hand-placing dozens of elements. Sits in the same
+   stacking context as the clouds/title (z-index: 1) so a drifting cloud
+   never draws on top of it. */
+.entry-grass {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+  height: 1.1rem;
+  background-color: #6fae4a;
+  background-image:
+    linear-gradient(180deg, #86c25f 0 0.3rem, transparent 0.3rem),
+    repeating-linear-gradient(
+      90deg,
+      #86c25f 0,
+      #86c25f 0.3rem,
+      transparent 0.3rem,
+      transparent 0.45rem,
+      #5a9640 0.45rem,
+      #5a9640 0.75rem,
+      transparent 0.75rem,
+      transparent 0.9rem
+    );
 }
 
 /* The "COMMONS" lockup sitting inside the sky strip — centered, above the

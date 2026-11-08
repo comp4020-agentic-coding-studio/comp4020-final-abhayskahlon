@@ -198,6 +198,17 @@ const activityPhrase =
               <div class="entry-cloud entry-cloud-3"></div>
               <span class="entry-sky-title">COMMONS</span>
               <div class="entry-grass" aria-hidden="true"></div>
+              {/* The five selectable appearances (Milo, Plip, Bella, Simbaa,
+                  Oliver), running left-to-right along the grass in a single
+                  line — drawn with src/components/entryParade.ts, which
+                  reuses the EXACT drawCreature() sprite function and data
+                  the Adventure runner already draws its own player sprite
+                  with (src/components/adventureGame.ts), not a second,
+                  separately-authored copy of the same five creatures.
+                  Purely decorative: no canvas here means no animation, the
+                  sky/clouds/grass/title around it are plain CSS and render
+                  identically either way. */}
+              <canvas class="entry-parade-canvas" data-entry-parade></canvas>
             </div>
 
             <div class="entry-shell">
@@ -689,6 +700,14 @@ const activityPhrase =
 
     <script>
       import { clockSkewMs, remainingSeconds } from "../components/activityCountdown";
+      import { startEntryParade } from "../components/entryParade";
+
+      // Entry page only — the room view never renders [data-entry-parade].
+      // Purely decorative, so a missing canvas/context (not expected, but
+      // never assumed) just means startEntryParade's own guard returns a
+      // no-op controller rather than throwing.
+      const paradeCanvas = document.querySelector<HTMLCanvasElement>("[data-entry-parade]");
+      if (paradeCanvas) startEntryParade(paradeCanvas);
 
       // Progressive enhancement only: every form here still has a real
       // method/action, so with JavaScript disabled or failing, submitting

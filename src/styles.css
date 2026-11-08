@@ -430,6 +430,30 @@ main :where(pre code) {
     );
 }
 
+/* The five appearances running along the grass — src/components/
+   entryParade.ts draws into this canvas, reusing adventureGame.ts's own
+   drawCreature() sprite function rather than a second copy of the same
+   art. Sits directly above .entry-grass (same z-index stacking context),
+   spanning the banner's full width so the line of creatures can loop
+   smoothly all the way across it. `pointer-events: none`: purely
+   decorative, never intercepts a click meant for anything beneath it
+   (nothing is beneath it here, but this matches the same "decorative
+   layer, not an interactive one" intent as `aria-hidden` on its parent).
+   If JavaScript never runs, this stays a transparent, empty canvas —
+   the sky/clouds/grass/title around it are unaffected either way. */
+.entry-parade-canvas {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 1.1rem;
+  width: 100%;
+  height: 2.75rem;
+  z-index: 1;
+  pointer-events: none;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
 /* The "COMMONS" lockup sitting inside the sky strip — centered, above the
    drifting clouds (an explicit z-index, since .entry-cloud is also
    `position: absolute` in the same stacking context and DOM order alone

@@ -396,7 +396,10 @@ function creaturePaletteMap(p: SpritePalette): Record<string, string> {
   return { B: p.body, A: p.accent, L: p.light, E: EYE };
 }
 
-function drawCreature(ctx: CanvasRenderingContext2D, appearance: AppearanceId, bottomY: number, centerX: number, pose: "run1" | "run2" | "jump" | "collision"): void {
+// Exported for src/components/entryParade.ts — the entry page's decorative
+// sky-banner animation reuses this exact function (and the sprite data it
+// draws) rather than re-authoring a second copy of the same five creatures.
+export function drawCreature(ctx: CanvasRenderingContext2D, appearance: AppearanceId, bottomY: number, centerX: number, pose: "run1" | "run2" | "jump" | "collision"): void {
   const palette = creaturePaletteMap(spritePaletteFor(appearance));
   const grid =
     pose === "collision"

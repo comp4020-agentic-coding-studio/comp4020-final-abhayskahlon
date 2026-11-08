@@ -850,7 +850,23 @@ const activityPhrase =
         const tick = () => {
           const remaining = Math.max(0, Math.round((deadline - Date.now()) / 1000));
           badge.textContent = remaining > 0 ? `${name} is sleeping — ${remaining}s` : `${name} is waking up…`;
-          if (remaining <= 0) clearInterval(countdownInterval);
+          if (remaining <= 0) {
+            clearInterval(countdownInterval);
+            // resolveActivity (src/lib/creature.ts) is the only thing that
+            // actually flips sleeping → idle, and it's checked lazily on
+            // the next read or action — there's no cron or background
+            // timer on the server, by design (PROCESS.md, Decision 5).
+            // Waking up isn't a care action, so nothing broadcasts an SSE
+            // event for it on its own: without this call, the badge (and
+            // the sleeping creature art) would sit on "is waking up…"
+            // forever until someone happened to perform an action or
+            // reload. refreshLiveState() is the same resync every other
+            // correction on this page already uses — this just fires it
+            // once, right when this tab's own already-displayed countdown
+            // reaches the deadline it was already counting down to, not a
+            // new polling mechanism alongside SSE.
+            refreshLiveState();
+          }
         };
         tick();
         countdownInterval = setInterval(tick, 1000);
@@ -924,6 +940,22 @@ const activityPhrase =
         events.addEventListener("error", () => setLive(false));
         events.addEventListener("update", () => {
           refreshLiveState();
+        });
+
+        // A backgrounded tab still runs its own activity-badge countdown
+        // (attachActivityCountdown above) and can still miss an SSE event
+        // during a reconnect gap — browsers routinely throttle or suspend
+        // background timers and connections, so a tab left open in another
+        // window can fall behind the server's real state with nothing to
+        // correct it until it happens to catch the next broadcast or the
+        // visitor performs an action there themselves. Resyncing on
+        // visibility return (same pattern src/components/adventureGame.ts
+        // already uses for its own pause-on-hidden handling) means
+        // reopening a stale tab always shows the server's actual current
+        // state immediately, not whatever this tab's own clock drifted to
+        // while unattended.
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "visible") refreshLiveState();
         });
       }
     </script>

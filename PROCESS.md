@@ -1639,6 +1639,66 @@ action/Recent care updating together, a second independent session
 receiving the same update live via SSE with no reload, rejected actions
 showing their specific reason, sleep's countdown and expiry — passed.
 
+### Incident 4 — the sleep countdown was a second, un-resynced clock
+
+**Reported.** Two real symptoms from the same human playtest: (1) two
+browser tabs open on the same room's sleep showed different remaining-
+seconds numbers for the exact same cooldown, and (2) after the countdown
+visibly reached zero, the creature never actually woke up on its own — it
+stayed asleep in the UI (badge stuck on "is waking up…", the sleeping SVG
+pose unchanged) until someone performed an unrelated action or reloaded.
+
+**Root cause.** `resolveActivity()` (`src/lib/creature.ts`) is, by design
+(Decision 5), only ever invoked lazily — on the next GET or action POST
+that happens to touch the creature, never on a timer. The client-side
+`attachActivityCountdown()` (`src/pages/index.astro`) is a genuinely
+separate clock: it reads `activityUntil` once, when the badge node is
+attached, and ticks down locally via its own `setInterval`, with no
+mechanism to ever ask the server again once it reaches zero. Two tabs that
+attached their own countdown at different moments — or a tab backgrounded
+long enough for the browser to throttle its timers — have no way to
+converge on the same number, and none of them has any reason to recheck
+the real server state once their own local countdown runs out, since
+reaching zero was never wired to anything beyond changing displayed text.
+This is a client-display gap, not a server inconsistency: `GET /` at any
+moment already returns the correct, freshly-resolved state (the same
+`resolveAndSync()` Incident 2 unified) — nothing was ever being asked.
+
+**Fix.** Two additive changes to `src/pages/index.astro`, no change to
+`src/lib/creature.ts` or `src/lib/db.ts` — the server-side resolution
+Incident 2 already fixed was always correct:
+
+1. The countdown's own `tick()` now calls `refreshLiveState()` once,
+   exactly when its local remaining-seconds count reaches zero — the same
+   full re-fetch-and-swap every other correction on this page already
+   uses, not a new polling mechanism. This is what makes the creature
+   actually wake up without requiring an unrelated action first: reaching
+   zero now asks the server, rather than just changing displayed text and
+   stopping.
+2. A `visibilitychange` listener (the same pattern already established in
+   `src/components/adventureGame.ts` for pausing on a hidden tab) calls
+   `refreshLiveState()` whenever a tab becomes visible again. This is what
+   closes the two-tabs-disagree gap: a tab that was backgrounded, or that
+   missed an SSE event during a reconnect gap, always resyncs to the
+   server's actual current state the moment it's looked at again, instead
+   of trusting however far its own un-resynced local clock had drifted.
+
+Neither change touches `activityUntil`'s meaning, the 8-second default
+(`SLEEP_COOLDOWN_MS`), or `resolveActivity()`/`resolveAndSync()` — the
+countdown was always cosmetic (PROCESS.md's own comment on
+`attachActivityCountdown()` says so), and stays exactly that; it now just
+reliably triggers the one existing resync path instead of silently
+stalling once its own guess ran out.
+
+**Verified** by directly reproducing both symptoms against a real
+browser session before the fix (an un-nudged countdown reaching zero and
+sitting on "is waking up…" indefinitely with no action taken), then
+confirming after the fix: the badge transitions straight from "1s" to the
+server's real post-wake state with no manual action in between, and a
+tab whose visibility is restored after the cooldown has already elapsed
+in the background immediately shows "awake" rather than a stale sleeping
+state.
+
 ## Commit log (evidence)
 
 Each entry links the commit that carried out the decision it's filed under.

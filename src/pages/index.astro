@@ -385,6 +385,7 @@ const activityPhrase =
                   class={`activity-badge ${state.activity}`}
                   id="activity-badge"
                   data-activity-until={state.activityUntil ?? ""}
+                  data-server-now={new Date().toISOString()}
                   data-creature-name={CREATURE_NAME}
                 >
                   {activityPhrase}
@@ -624,6 +625,8 @@ const activityPhrase =
     </main>
 
     <script>
+      import { clockSkewMs, remainingSeconds } from "../components/activityCountdown";
+
       // Progressive enhancement only: every form here still has a real
       // method/action, so with JavaScript disabled or failing, submitting
       // still works exactly as the server-side contract describes — a
@@ -834,6 +837,20 @@ const activityPhrase =
       // state.activity / state.lastAction, never invented here) is what
       // this only ever adds a live countdown on top of. A no-op on the
       // entry page, where #activity-badge doesn't exist.
+      //
+      // Deliberately anchored to the SERVER's clock, not the browser's own
+      // Date.now() — a real bug, found via playtesting: a visitor whose
+      // system clock reads even a handful of seconds off from real time
+      // saw the badge count down from a value that didn't match
+      // `activityUntil`'s own stated cooldown at all (e.g. "19s" against an
+      // 8-second sleep), since `deadline - Date.now()` silently absorbs
+      // whatever that local clock's own offset from real time happens to
+      // be. `data-server-now` is this same badge's own render-time
+      // timestamp, straight from the server's `new Date()` — `skew` is
+      // this browser's offset from it, computed once per badge attach and
+      // held constant for that badge's whole countdown, so a wrong local
+      // clock changes the displayed numbers' cosmetic jitter at worst,
+      // never the number of seconds actually counted down.
       let countdownInterval: ReturnType<typeof setInterval> | undefined;
       function attachActivityCountdown() {
         clearInterval(countdownInterval);
@@ -846,9 +863,10 @@ const activityPhrase =
         // appearances is actually selected.
         const name = badge?.dataset.creatureName ?? "Milo";
         if (!badge || !until) return;
-        const deadline = new Date(until).getTime();
+        const serverNow = badge.dataset.serverNow;
+        const skew = serverNow ? clockSkewMs(serverNow, Date.now()) : 0;
         const tick = () => {
-          const remaining = Math.max(0, Math.round((deadline - Date.now()) / 1000));
+          const remaining = remainingSeconds(until, Date.now(), skew);
           badge.textContent = remaining > 0 ? `${name} is sleeping — ${remaining}s` : `${name} is waking up…`;
           if (remaining <= 0) {
             clearInterval(countdownInterval);

@@ -3,6 +3,15 @@
 What's changed, in plain terms, newest first — read live via `/patch-notes/`
 and summarised on the entry page's own "what's new in COMMONS" section.
 
+## Patch 1.10 — the sleep countdown no longer depends on your own clock being right
+
+Fixed a follow-up bug found right after Patch 1.9 shipped: the sleep
+countdown could show a wildly wrong number of seconds — e.g. 19 seconds
+for an 8-second sleep — if the visitor's own device clock wasn't quite
+accurate. The countdown now anchors itself to the server's clock instead
+of trusting the browser's own, so it always shows the real time
+remaining regardless of what your device's clock happens to say.
+
 ## Patch 1.9 — the sleep countdown now wakes the creature up on its own
 
 Fixed two real bugs found via playtesting: the creature previously never

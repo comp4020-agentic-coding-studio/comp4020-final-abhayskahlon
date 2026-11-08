@@ -1699,6 +1699,57 @@ tab whose visibility is restored after the cooldown has already elapsed
 in the background immediately shows "awake" rather than a stale sleeping
 state.
 
+**Follow-up, found by further playtesting after the above shipped: a
+third, distinct root cause, not fixed by either change above.** Reported
+again — a fresh, just-reloaded tab showed the badge counting down from
+19 seconds for a sleep whose own "Recent care" entry, a few lines below
+it on the exact same page, said "asleep for 8s." Not the same bug: this
+was reproducible on a freshly loaded tab, ruling out stale pre-fix
+JavaScript left running in an old tab, and it recurred with the exact
+same ~11-second gap on a separate occasion.
+
+**Root cause.** The countdown's `remaining = (deadline - Date.now()) /
+1000` trusted the BROWSER's own system clock completely. `deadline`
+(`activityUntil`) is a real, correct UTC timestamp computed server-side
+as `now + SLEEP_COOLDOWN_MS` — never wrong — but if the visitor's own
+machine's clock reads even a few seconds off true time (a real, common
+condition — unsynced NTP, a VM with clock drift, a stale manually-set
+clock), every `Date.now()` call on that page inherits that exact offset,
+and an 8-second cooldown can display as 19 seconds, or any other number,
+entirely depending on how wrong that one visitor's system clock happens
+to be. Confirmed directly: simulating a client clock running 11 seconds
+behind real time, against a real 8-second cooldown, reproduced the exact
+reported "19s" figure to the second — proof this was the actual
+mechanism, not a coincidence.
+
+**Fix.** `src/pages/index.astro`'s activity badge now also carries
+`data-server-now` — the server's own `new Date().toISOString()` at the
+moment that badge was rendered. `attachActivityCountdown()` computes this
+client's clock skew from that value once, at attach time
+(`clockSkewMs()`), and every subsequent tick subtracts that same skew
+before comparing against `Date.now()` (`remainingSeconds()`) — so a
+visitor's wrong system clock can no longer change how many seconds are
+actually counted down, only (at most) introduce cosmetic jitter of a
+fraction of a round-trip between the server's render and the browser
+reading it. Both functions were pulled out of the inline `<script>` into
+`src/components/activityCountdown.ts` — pure, no DOM, no timers — the
+same "extract the real logic so it's directly testable" shape
+`src/components/age.ts` and `src/components/adventureGame.ts` already
+use, rather than leaving this as only checkable via a static
+source-pattern match the way the un-resynced-clock fix above had to be.
+
+**Tests** (`spec/activity-countdown.test.ts`). Exercises `clockSkewMs()`
+and `remainingSeconds()` directly and numerically: the reported bug
+reproduced exactly (an 11s-behind clock against an 8s cooldown must
+yield 8, never 19, and must still read correctly several ticks later,
+not just at the first instant), a clock running ahead corrected the same
+way, a perfectly-synced clock (skew 0) behaving identically to no
+correction at all, and the result never going negative once the deadline
+has passed regardless of which direction the skew runs. Confirmed these
+assertions actually fail against the pre-fix arithmetic (predicting
+exactly "19" instead of "8") before confirming they pass against the
+fix — a genuine regression guard, not a tautology.
+
 ## Commit log (evidence)
 
 Each entry links the commit that carried out the decision it's filed under.

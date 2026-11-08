@@ -408,6 +408,15 @@ main :where(pre code) {
   margin: 0 0 var(--space-4);
 }
 
+/* The one .entry-concept-note that comes AFTER .entry-feature-list rather
+   than before it — that list has margin: 0 (it sits flush under the
+   concept note above it by design), so without its own top margin this
+   paragraph would run straight into the icon row above with no
+   separation at all. */
+.entry-progress-note {
+  margin-top: var(--space-4);
+}
+
 /* A plain icon+label list, not buttons — these aren't live controls before
    a room exists, just a preview of "here's what you'll do together",
    reusing the exact same ActionIcon set the real action buttons use. */

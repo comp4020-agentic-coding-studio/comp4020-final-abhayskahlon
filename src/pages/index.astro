@@ -184,7 +184,9 @@ const activityPhrase =
 
                 <p class="entry-concept-note">
                   Feed, play, walk, clean, and send {CREATURE_NAME} on adventures together — one shared creature,
-                  cared for by everyone in your room, with no score for who did the most.
+                  cared for by everyone in your room, with no score for who did the most. Most actions both help and
+                  cost something, so one person's choice changes what the next person should reasonably do —
+                  that trade-off is the whole point, not a flaw to work around.
                 </p>
 
                 <ul class="entry-feature-list">
@@ -201,9 +203,33 @@ const activityPhrase =
                     <ActionIcon action="clean" /> Clean
                   </li>
                   <li>
+                    <ActionIcon action="sleep" /> Sleep
+                  </li>
+                  <li>
                     <ActionIcon action="adventure" /> Adventure
                   </li>
+                  <li>
+                    <ActionIcon action="appearance" /> Appearance
+                  </li>
+                  <li>
+                    <ActionIcon action="wardrobe" /> Wardrobe
+                  </li>
                 </ul>
+
+                {/* "How to progress" — read straight off the same two
+                    tracks README.md's own "Progression" section describes
+                    (PROCESS.md, Decisions 14/16): a lifetime milestone
+                    count and a 5-level cosmetic-unlock arc, both room-level
+                    and unranked, never a per-visitor score. Kept to one
+                    short paragraph, not a restatement of every number —
+                    the real, current figures are what the room view itself
+                    already shows once you're in. */}
+                <p class="entry-concept-note entry-progress-note">
+                  Every successful action adds to two shared, unranked totals for the room: a lifetime{" "}
+                  <strong>milestone</strong> count, and a <strong>level</strong> (1 through 5) that unlocks new hats,
+                  scarves and looks as it grows. Both belong to the room, not to whoever acted — there's no
+                  leaderboard and no way to tell who contributed more.
+                </p>
               </div>
 
               <section class="panel entry-panel" aria-labelledby="entry-panel-heading">

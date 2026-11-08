@@ -233,6 +233,21 @@ own component following the same pattern as the other five.
   `form.action`" above) — the one spec file here that constructs a real
   DOM form element rather than only calling `fetch()` with a hand-built
   URL string, and the only one that can catch this class of bug at all.
+- `spec/activity-countdown-resync.test.ts` guards Incident 4 (PROCESS.md)
+  — a static source check, the same kind `action-form-url.test.ts` uses,
+  since this is real browser `setInterval`/`visibilitychange` timing
+  jsdom doesn't meaningfully execute. Asserts the countdown's own `tick()`
+  calls `refreshLiveState()` once it reaches zero (so the creature wakes
+  itself up without requiring an unrelated action first) and that a
+  `visibilitychange` listener resyncs a backgrounded tab on return.
+- `spec/activity-countdown.test.ts` guards Incident 4's follow-up — the
+  countdown trusting the visitor's own, possibly wrong, system clock
+  (reported as "19s" shown for an 8-second sleep). Unlike the resync fix
+  above, this bug is pure arithmetic once extracted
+  (`src/components/activityCountdown.ts`), so it's tested directly and
+  numerically rather than only by source pattern: the exact reported
+  figure is reproduced against the pre-fix arithmetic before confirming
+  the fix corrects it.
 - Every spec file above was written to protect a real, previously-reported
   or previously-reasoned-about failure — not added speculatively. Don't add
   a new one without a specific invariant it protects that nothing else

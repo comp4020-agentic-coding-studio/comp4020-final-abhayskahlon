@@ -1867,3 +1867,9 @@ Each entry links the commit that carried out the decision it's filed under.
   `visibilitychange` resync in `src/pages/index.astro`, with
   `spec/activity-countdown-resync.test.ts` confirmed to fail against the
   pre-fix source and pass against the fix: [`20dcb15`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/20dcb15b5a456c300a41d46336d905ee914b4fe6)
+- Incident 4's follow-up (the countdown trusted the visitor's own, possibly
+  wrong, system clock) — `data-server-now`, the skew-correction logic
+  extracted into `src/components/activityCountdown.ts`, and
+  `spec/activity-countdown.test.ts` reproducing the reported "19s for an
+  8s cooldown" figure exactly before confirming the fix corrects it:
+  [`c74f96c`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/c74f96ccc4f43cbd62bf4b4659b36b4b7606663c)

@@ -3,6 +3,18 @@
 What's changed, in plain terms, newest first — read live via `/patch-notes/`
 and summarised on the entry page's own "what's new in COMMONS" section.
 
+## Patch 1.11 — a proper welcome, and a wider animated sky banner
+
+The entry page's welcome column now actually explains what COMMONS is —
+all eight actions listed with their icons (not just five), and a new
+paragraph on the shared milestone/level progression track. Above it, a
+small animated sky banner — three drifting pixel-art clouds and a tiled
+grass strip along the bottom, all pure CSS — now spans the full page
+width with the "Enter COMMONS" panel sitting beneath it, carrying the
+COMMONS name itself while the page's own heading underneath reads just
+"COMMONS." Purely cosmetic: no change to any action, stat, room, or
+account mechanic.
+
 ## Patch 1.10 — the sleep countdown no longer depends on your own clock being right
 
 Fixed a follow-up bug found right after Patch 1.9 shipped: the sleep

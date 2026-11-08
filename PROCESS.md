@@ -1457,6 +1457,66 @@ test for the game's own controls, and behavior under a slow or
 interrupted network connection during the "Return to Commons" submit —
 stated as open limitations, not silently assumed to be fine.
 
+**Follow-up: the entry page's welcome column, a decorative sky banner,
+and a request to recreate (not embed) a supplied reference video.** Four
+visual-only passes on `src/pages/index.astro`/`src/styles.css`, none
+touching the schema, the five actions, room/session identity, or the
+real-time mechanism, so none is its own numbered decision:
+
+1. The welcome column's copy was expanded from a short intro into an
+   actual explanation of what COMMONS is: the concept note, the full
+   8-item feature list (every action icon, including `sleep`,
+   `appearance`, and `wardrobe`, which an earlier version of this list
+   had missed), and a new paragraph on the milestone/level progression
+   track already described above in README's own "Progression" section
+   — read off that existing text, not a new description invented here.
+2. A request for "a live background like this" came with a screen
+   recording that, on inspection, was of a different, unrelated site's
+   own branded mascot and UI — not something this repo could embed
+   without either misattributing someone else's work or, per this
+   project's own Decision 18 precedent (no `public/`/`src/assets/`,
+   no image or video files anywhere in this repo), introducing the
+   first media asset this project has ever shipped. Raised directly
+   rather than silently either refused or complied with; the person
+   asking chose to recreate the *effect* (an animated sky) rather than
+   the *content*, scoped to a small, contained strip above the welcome
+   text rather than a full-page takeover — preserving both "no media
+   assets" and "a restrained background, not scenery" (Decision 1's
+   own visual language). Built as pure CSS: a gradient sky, three
+   drifting pixel-art clouds using the exact three-rectangle silhouette
+   `adventureGame.ts`'s own cloud-drawing already established, each on
+   its own slow, looped, `animation-delay`-staggered drift so the three
+   never line up. Respects the site-wide `prefers-reduced-motion`
+   override already in place (no special-case condition needed) —
+   confirmed directly, not assumed: two screenshots taken three seconds
+   apart with `reducedMotion: "reduce"` set came back pixel-identical.
+3. The literal heading text ("Welcome to COMMONS") was shortened to
+   just "COMMONS," with the same word placed inside the sky banner
+   itself as a centered, decorative lockup — `aria-hidden` stays correct
+   on that banner even with real text inside now, since `h1#entry-heading`
+   immediately after it is still the one real, accessible "COMMONS" a
+   screen reader visitor hears; without that, a visitor using one would
+   hear the same single word announced twice in a row with no added
+   information.
+4. The banner was then widened from one welcome-column's share of the
+   page to the full page width — a sibling of `.entry-shell` now, placed
+   before it, rather than a child of `.entry-welcome` — so the "Enter
+   COMMONS" room-join panel sits below the full-width banner instead of
+   beside a half-width one, and a tiled pixel-art grass strip (the same
+   "stepped, not smooth" box-shadow/repeating-gradient technique as
+   `adventureGame.ts`'s own ground tufts) was added along its bottom
+   edge.
+
+None of these four changes touch `#live-state`, any API route, the
+database, or any existing spec file's selectors — `spec/rooms.test.ts`
+and `spec/persistence.test.ts`'s own structural checks (on `#entry-heading`'s
+presence, not its exact text) were read and confirmed unaffected before
+the heading text was shortened. Verified each time by rendering the
+actual page with a headless browser at both desktop and mobile widths,
+not by reading the CSS alone — including, for the final widening, a
+direct check against the live production deployment at 390px and 320px
+viewports, not just localhost.
+
 ## Out of scope for this deliverable (unchanged from the course's own list)
 
 No accounts/profiles, chat, voting/likes, maps, push/SMS/email
@@ -1873,3 +1933,12 @@ Each entry links the commit that carried out the decision it's filed under.
   `spec/activity-countdown.test.ts` reproducing the reported "19s for an
   8s cooldown" figure exactly before confirming the fix corrects it:
   [`c74f96c`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/c74f96ccc4f43cbd62bf4b4659b36b4b7606663c)
+- The welcome-column follow-up above, as its own four commits, in
+  sequence: the expanded concept note, full 8-icon feature list, and new
+  progression paragraph [`deede31`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/deede3101a1467c9a9ff906aac4e8a64fbe4b7ad);
+  the CSS-only animated sky strip recreating the requested effect rather
+  than embedding the supplied reference video [`dc4309b`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/dc4309b6a3acfeed62c2332c9fe2666be39289d3);
+  the heading shortened to "COMMONS" with the name added inside the
+  banner itself [`68c0991`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/68c0991dfceeece3c18100e6aed7a73664ad2c06);
+  and the banner widened to the full page width with a pixel-grass strip
+  added along its bottom edge [`f7c4fe7`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-abhayskahlon/commit/f7c4fe7b2460669ebd87c7bbe73f156584036c36).
